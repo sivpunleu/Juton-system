@@ -7,6 +7,7 @@
     "dev": "nodemon server.js",
     "start": "node server.js",
     "test": "node --test",
+    "db:sync": "node scripts/syncDatabase.js",
     "hash-password": "node scripts/hashPassword.js",
     "generate-jwt-secret": "node scripts/generateJwtSecret.js"
   },

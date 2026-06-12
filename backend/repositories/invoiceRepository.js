@@ -18,6 +18,49 @@ const duplicateInvoiceError = () => {
   return error
 }
 
+const paymentError = (message) => {
+  const error = new Error(message)
+  error.statusCode = 400
+  return error
+}
+
+const roundMoney = (value) =>
+  Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100
+
+const paymentTotals = (invoice, amount) => {
+  if (['draft', 'cancelled'].includes(invoice.status)) {
+    throw paymentError('Payments cannot be added to draft or cancelled invoices')
+  }
+
+  const grandTotal = roundMoney(invoice.grandTotal)
+  const recordedPayments = (invoice.payments || []).reduce(
+    (sum, payment) => sum + Number(payment.amount || 0),
+    0,
+  )
+  const existingPaidAmount = roundMoney(
+    Math.max(
+      Number(invoice.depositAmount || 0) + recordedPayments,
+      Number(invoice.paidAmount || 0),
+      grandTotal - Number(invoice.balanceDue || 0),
+    ),
+  )
+  const paidAmount = roundMoney(existingPaidAmount + amount)
+
+  if (paidAmount > grandTotal) {
+    throw paymentError('Payment amount cannot exceed the balance due')
+  }
+
+  const balanceDue = roundMoney(Math.max(0, grandTotal - paidAmount))
+  const status = balanceDue <= 0 ? 'paid' : 'partially_paid'
+
+  return {
+    paidAmount,
+    balanceDue,
+    status,
+    paymentStatus: status === 'paid' ? 'paid' : 'partial',
+  }
+}
+
 const normalizePagination = (page, limit) => ({
   page: Math.max(1, Number(page) || 1),
   limit: Math.min(100, Math.max(1, Number(limit) || 10)),
@@ -235,12 +278,23 @@ export const insertInvoice = async (payload) => {
   })
 }
 
-export const replaceInvoice = async (id, payload) => {
-  const normalized = normalizeInvoiceCollections(payload)
+export const replaceInvoice = async (id, payloadOrFactory) => {
   if (getStorageMode() === 'mysql') {
-    const invoice = await Invoice.findOne({ where: { id, deletedAt: null } })
-    if (!invoice) return null
-    return invoice.update(normalized)
+    return sequelize.transaction(async (transaction) => {
+      const invoice = await Invoice.findOne({
+        where: { id, deletedAt: null },
+        transaction,
+        lock: transaction.LOCK.UPDATE,
+      })
+      if (!invoice) return null
+      const payload =
+        typeof payloadOrFactory === 'function'
+          ? await payloadOrFactory(invoice)
+          : payloadOrFactory
+      return invoice.update(normalizeInvoiceCollections(payload), {
+        transaction,
+      })
+    })
   }
 
   return mutateLocalCollection('invoices', (invoices) => {
@@ -249,6 +303,11 @@ export const replaceInvoice = async (id, payload) => {
         String(invoice.id) === String(id) && !invoice.deletedAt,
     )
     if (index === -1) return null
+    const payload =
+      typeof payloadOrFactory === 'function'
+        ? payloadOrFactory(invoices[index])
+        : payloadOrFactory
+    const normalized = normalizeInvoiceCollections(payload)
     const duplicate = invoices.some(
       (invoice, invoiceIndex) =>
         invoiceIndex !== index &&
@@ -310,7 +369,7 @@ export const restoreInvoice = async (id, actor) => {
   })
 }
 
-export const appendInvoicePayment = async (id, payment, totals) => {
+export const appendInvoicePayment = async (id, payment) => {
   const timestamp = new Date().toISOString()
   const normalizedPayment = {
     ...payment,
@@ -326,10 +385,12 @@ export const appendInvoicePayment = async (id, payment, totals) => {
         lock: transaction.LOCK.UPDATE,
       })
       if (!invoice) return null
+      const totals = paymentTotals(invoice, Number(normalizedPayment.amount))
       return invoice.update(
         {
           payments: [...(invoice.payments || []), normalizedPayment],
           ...totals,
+          updatedBy: normalizedPayment.recordedBy || invoice.updatedBy,
         },
         { transaction },
       )
@@ -340,8 +401,12 @@ export const appendInvoicePayment = async (id, payment, totals) => {
       (item) => String(item.id) === String(id) && !item.deletedAt,
     )
     if (!invoice) return null
+    const totals = paymentTotals(invoice, Number(normalizedPayment.amount))
     invoice.payments = [...(invoice.payments || []), normalizedPayment]
-    Object.assign(invoice, totals, { updatedAt: timestamp })
+    Object.assign(invoice, totals, {
+      updatedBy: normalizedPayment.recordedBy || invoice.updatedBy || '',
+      updatedAt: timestamp,
+    })
     return invoice
   })
 }

@@ -13,7 +13,7 @@ services:
       - key: DB_HOST
         sync: false
       - key: DB_PORT
-        value: "3306"
+        sync: false
       - key: DB_NAME
         sync: false
       - key: DB_USER
@@ -24,8 +24,10 @@ services:
         value: "true"
       - key: DB_SSL_CA_PATH
         sync: false
+      - key: DB_SSL_CA
+        sync: false
       - key: DB_SYNC
-        value: "true"
+        value: "false"
       - key: DB_LOGGING
         value: "false"
       - key: DB_POOL_MAX

@@ -26,6 +26,23 @@ const paidAmount = (invoice) =>
     ),
   )
 
+export const invoiceBelongsToCustomer = (invoice, customer) => {
+  if (invoice.customerId) {
+    return String(invoice.customerId) === String(customer.id)
+  }
+
+  const customerPhone = String(customer.phone || '').trim()
+  const invoicePhone = String(invoice.customer?.phone || '').trim()
+  if (customerPhone && invoicePhone) {
+    return customerPhone === invoicePhone
+  }
+
+  return (
+    String(customer.name || '').trim().toLocaleLowerCase() ===
+    String(invoice.customer?.name || '').trim().toLocaleLowerCase()
+  )
+}
+
 export const globalSearch = async (req, res) => {
   try {
     const query = String(req.query.q || '').trim()
@@ -122,18 +139,7 @@ export const getCustomerStatement = async (req, res) => {
 
     const invoices = (await getAllInvoices())
       .filter((invoice) => !invoice.deletedAt)
-      .filter((invoice) => {
-        if (String(invoice.customerId || '') === String(customer.id)) {
-          return true
-        }
-        return (
-          (customer.phone &&
-            invoice.customer?.phone &&
-            String(customer.phone) === String(invoice.customer.phone)) ||
-          String(customer.name).toLocaleLowerCase() ===
-            String(invoice.customer?.name || '').toLocaleLowerCase()
-        )
-      })
+      .filter((invoice) => invoiceBelongsToCustomer(invoice, customer))
       .filter((invoice) => {
         const date = new Date(invoice.invoiceDate)
         return (!from || date >= from) && (!to || date <= to)

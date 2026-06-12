@@ -110,13 +110,13 @@ Production requires MySQL. The local JSON fallback is development-only.
 
 ```text
 DB_HOST=your-cloud-mysql-host
-DB_PORT=3306
+DB_PORT=your-cloud-mysql-port
 DB_NAME=defaultdb
 DB_USER=your-database-user
 DB_PASSWORD=your-database-password
 DB_SSL=true
 DB_SSL_CA_PATH=/etc/secrets/mysql-ca.pem
-DB_SYNC=true
+DB_SYNC=false
 DB_LOGGING=false
 CLIENT_URL=https://your-frontend.vercel.app
 ADMIN_USERNAME=admin
@@ -136,6 +136,14 @@ After deployment, test:
 ```text
 https://your-backend.onrender.com/api/health
 ```
+
+Run `npm run db:sync` once with the production database environment variables
+when creating an empty database. Keep `DB_SYNC=false` during normal production
+startup.
+
+Database snapshots stored by the application live in the same MySQL service.
+Download important snapshots regularly and keep an encrypted copy outside the
+database provider.
 
 ### 3. Frontend on Vercel
 

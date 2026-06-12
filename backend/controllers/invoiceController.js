@@ -161,7 +161,7 @@ export const normalizeSalesAttribution = (body) => {
   }
 }
 
-const normalizeInvoice = (
+export const normalizeInvoice = (
   body,
   { invoiceNumber, actor, existingPayments = [] } = {},
 ) => {
@@ -185,6 +185,11 @@ const normalizeInvoice = (
     payments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0),
   )
   const paidAmount = roundMoney(totals.depositAmount + historyPaidAmount)
+  if (paidAmount > totals.grandTotal) {
+    throw new Error(
+      'Invoice total cannot be less than the amount already received',
+    )
+  }
   const balanceDue = roundMoney(
     Math.max(0, totals.grandTotal - paidAmount),
   )
@@ -318,18 +323,18 @@ export const createInvoice = async (req, res) => {
 
 export const updateInvoice = async (req, res) => {
   try {
-    const existing = await findInvoiceById(req.params.id)
-    if (!existing) {
-      return res.status(404).json({ message: 'Invoice not found' })
-    }
     const invoice = await replaceInvoice(
       req.params.id,
-      normalizeInvoice(req.body, {
-        invoiceNumber: existing.invoiceNumber,
-        actor: req.admin.username,
-        existingPayments: existing.payments,
-      }),
+      (existing) =>
+        normalizeInvoice(req.body, {
+          invoiceNumber: existing.invoiceNumber,
+          actor: req.admin.username,
+          existingPayments: existing.payments,
+        }),
     )
+    if (!invoice) {
+      return res.status(404).json({ message: 'Invoice not found' })
+    }
     await writeAuditLog({
       actor: req.admin,
       action: 'update',
@@ -386,16 +391,6 @@ export const restoreDeletedInvoice = async (req, res) => {
 
 export const addInvoicePayment = async (req, res) => {
   try {
-    const invoice = await findInvoiceById(req.params.id)
-    if (!invoice) {
-      return res.status(404).json({ message: 'Invoice not found' })
-    }
-    if (['draft', 'cancelled'].includes(invoice.status)) {
-      return res.status(400).json({
-        message: 'Payments cannot be added to draft or cancelled invoices',
-      })
-    }
-
     const amount = roundMoney(req.body.amount)
     const paidAt = new Date(req.body.paidAt || Date.now())
     const receivedBy = String(
@@ -404,9 +399,6 @@ export const addInvoicePayment = async (req, res) => {
     if (!Number.isFinite(amount) || amount <= 0) {
       throw new Error('Payment amount must be greater than zero')
     }
-    if (amount > Number(invoice.balanceDue || 0)) {
-      throw new Error('Payment amount cannot exceed the balance due')
-    }
     if (Number.isNaN(paidAt.getTime())) {
       throw new Error('Payment date is invalid')
     }
@@ -414,24 +406,6 @@ export const addInvoicePayment = async (req, res) => {
       throw new Error('Received by is required')
     }
 
-    const existingPaidAmount = roundMoney(
-      Math.max(
-        Number(invoice.paidAmount || 0),
-        Math.max(
-          0,
-          Number(invoice.grandTotal || 0) - Number(invoice.balanceDue || 0),
-        ),
-      ),
-    )
-    const paidAmount = roundMoney(existingPaidAmount + amount)
-    const balanceDue = roundMoney(
-      Math.max(0, Number(invoice.grandTotal || 0) - paidAmount),
-    )
-    const status = resolveStatus({
-      requestedStatus: invoice.status,
-      paidAmount,
-      balanceDue,
-    })
     const updated = await appendInvoicePayment(
       req.params.id,
       {
@@ -441,14 +415,10 @@ export const addInvoicePayment = async (req, res) => {
         note: String(req.body.note || '').trim(),
         recordedBy: req.admin.username,
       },
-      {
-        paidAmount,
-        balanceDue,
-        status,
-        paymentStatus: legacyPaymentStatus(status),
-        updatedBy: req.admin.username,
-      },
     )
+    if (!updated) {
+      return res.status(404).json({ message: 'Invoice not found' })
+    }
     await writeAuditLog({
       actor: req.admin,
       action: 'payment',

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   calculateTotals,
+  normalizeInvoice,
   normalizeSalesAttribution,
 } from '../controllers/invoiceController.js'
 
@@ -114,5 +115,32 @@ test('normalizeSalesAttribution requires a selected salesperson', () => {
   assert.throws(
     () => normalizeSalesAttribution({ salesChannel: 'salesperson' }),
     /select a salesperson/,
+  )
+})
+
+test('normalizeInvoice rejects a total below previously received payments', () => {
+  assert.throws(
+    () =>
+      normalizeInvoice(
+        {
+          invoiceDate: '2026-06-12',
+          dueDate: '2026-06-19',
+          customer: { name: 'Paid Customer' },
+          items: [
+            {
+              description: 'Paint',
+              quantity: 1,
+              unitPrice: 50,
+            },
+          ],
+          salesChannel: 'store',
+        },
+        {
+          invoiceNumber: 'INV-2026-00001',
+          actor: 'owner',
+          existingPayments: [{ amount: 60 }],
+        },
+      ),
+    /cannot be less than the amount already received/,
   )
 })

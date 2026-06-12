@@ -42,6 +42,34 @@ test('local repository sequences, paginates, deletes, and restores', async () =>
     )
     assert.equal(publicInvoice.id, invoice.id)
 
+    const paymentResults = await Promise.allSettled([
+      repository.appendInvoicePayment(invoice.id, {
+        amount: 6,
+        paidAt: '2026-06-09T00:00:00.000Z',
+        receivedBy: 'Owner',
+        recordedBy: 'owner',
+      }),
+      repository.appendInvoicePayment(invoice.id, {
+        amount: 6,
+        paidAt: '2026-06-09T00:01:00.000Z',
+        receivedBy: 'Owner',
+        recordedBy: 'owner',
+      }),
+    ])
+    assert.equal(
+      paymentResults.filter((result) => result.status === 'fulfilled').length,
+      1,
+    )
+    assert.equal(
+      paymentResults.filter((result) => result.status === 'rejected').length,
+      1,
+    )
+    const afterPayment = await repository.findInvoiceById(invoice.id)
+    assert.equal(afterPayment.payments.length, 1)
+    assert.equal(afterPayment.paidAmount, 6)
+    assert.equal(afterPayment.balanceDue, 4)
+    assert.equal(afterPayment.status, 'partially_paid')
+
     await repository.softDeleteInvoice(invoice.id, 'tester')
     const afterDelete = await repository.listInvoices({})
     const trash = await repository.listInvoices({ deleted: true })
