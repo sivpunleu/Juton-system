@@ -4,7 +4,7 @@ import {
   getAuthToken,
 } from '../auth/session.js'
 
-const productionApiUrl = 'https://jotun-billing-system.onrender.com/api'
+const productionApiUrl = 'https://jotun-mysql-api.onrender.com/api'
 const configuredApiUrl = import.meta.env.VITE_API_URL?.trim()
 const baseURL = (
   configuredApiUrl || (import.meta.env.PROD ? productionApiUrl : '/api')
