@@ -24,7 +24,7 @@ const AuditLog = sequelize.define(
     },
     entityId: { type: DataTypes.STRING(100), allowNull: false, defaultValue: '' },
     summary: textField(),
-    details: { type: DataTypes.JSON, allowNull: false, defaultValue: {} },
+    details: { type: DataTypes.JSON, allowNull: true },
   },
   {
     tableName: 'audit_logs',

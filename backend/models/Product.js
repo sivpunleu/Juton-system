@@ -46,7 +46,7 @@ const Product = sequelize.define(
       defaultValue: 5,
       validate: { min: 0 },
     },
-    stockMovements: { type: DataTypes.JSON, allowNull: false, defaultValue: [] },
+    stockMovements: { type: DataTypes.JSON, allowNull: true },
     notes: textField(),
     createdBy: { type: DataTypes.STRING(80), allowNull: false, defaultValue: '' },
     updatedBy: { type: DataTypes.STRING(80), allowNull: false, defaultValue: '' },

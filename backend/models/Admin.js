@@ -16,7 +16,7 @@ const Admin = sequelize.define(
       validate: { notEmpty: true },
     },
     displayName: { type: DataTypes.STRING(80), allowNull: false, defaultValue: '' },
-    avatar: { type: DataTypes.TEXT('long'), allowNull: false, defaultValue: '' },
+    avatar: { type: DataTypes.TEXT('long'), allowNull: true },
     passwordHash: { type: DataTypes.STRING(255), allowNull: false },
     role: {
       type: DataTypes.ENUM('owner', 'admin', 'viewer'),

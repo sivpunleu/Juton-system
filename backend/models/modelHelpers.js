@@ -6,10 +6,9 @@ export const idField = {
   primaryKey: true,
 }
 
-export const textField = (defaultValue = '') => ({
+export const textField = () => ({
   type: DataTypes.TEXT,
-  allowNull: false,
-  defaultValue,
+  allowNull: true,
 })
 
 export const asPlainObject = (record) =>

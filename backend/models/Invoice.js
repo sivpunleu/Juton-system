@@ -37,8 +37,7 @@ const Invoice = sequelize.define(
     salespersonId: { type: DataTypes.STRING(36), allowNull: true },
     salesperson: {
       type: DataTypes.JSON,
-      allowNull: false,
-      defaultValue: { name: '', phone: '' },
+      allowNull: true,
     },
     items: {
       type: DataTypes.JSON,
@@ -105,7 +104,7 @@ const Invoice = sequelize.define(
       allowNull: false,
       defaultValue: 'unpaid',
     },
-    payments: { type: DataTypes.JSON, allowNull: false, defaultValue: [] },
+    payments: { type: DataTypes.JSON, allowNull: true },
     notes: textField(),
     createdBy: { type: DataTypes.STRING(80), allowNull: false, defaultValue: '' },
     updatedBy: { type: DataTypes.STRING(80), allowNull: false, defaultValue: '' },

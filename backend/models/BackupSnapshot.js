@@ -18,7 +18,7 @@ const BackupSnapshot = sequelize.define(
       defaultValue: 'system',
     },
     reason: textField(),
-    counts: { type: DataTypes.JSON, allowNull: false, defaultValue: {} },
+    counts: { type: DataTypes.JSON, allowNull: true },
     payload: { type: DataTypes.JSON, allowNull: false },
   },
   {
