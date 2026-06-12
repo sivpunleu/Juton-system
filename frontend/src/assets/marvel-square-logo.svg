@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" role="img" aria-labelledby="title">
+  <title id="title">Marvel Decor</title>
+  <rect width="120" height="120" rx="2" fill="#14294f"/>
+  <path d="M20 61 54 27l18 18 12-12 24 24v12L84 47 72 59 54 41 20 75z" fill="#dce5f2"/>
+  <path d="M30 62h60v35H30z" fill="none" stroke="#dce5f2" stroke-width="3"/>
+  <text x="60" y="82" text-anchor="middle" fill="#e64a45" font-family="Arial, sans-serif" font-size="19" font-weight="800">MARVEL</text>
+  <text x="60" y="94" text-anchor="middle" fill="#fff" font-family="Arial, sans-serif" font-size="7" letter-spacing="2">DECOR</text>
+</svg>

@@ -1,0 +1,54 @@
+services:
+  - type: web
+    name: jotun-billing-api
+    runtime: node
+    plan: free
+    rootDir: backend
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DB_HOST
+        sync: false
+      - key: DB_PORT
+        value: "3306"
+      - key: DB_NAME
+        sync: false
+      - key: DB_USER
+        sync: false
+      - key: DB_PASSWORD
+        sync: false
+      - key: DB_SSL
+        value: "true"
+      - key: DB_SSL_CA_PATH
+        sync: false
+      - key: DB_SYNC
+        value: "true"
+      - key: DB_LOGGING
+        value: "false"
+      - key: DB_POOL_MAX
+        value: "10"
+      - key: CLIENT_URL
+        sync: false
+      - key: ADMIN_USERNAME
+        sync: false
+      - key: ADMIN_PASSWORD_HASH
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: JWT_EXPIRES_IN
+        value: 8h
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_CHAT_ID
+        sync: false
+      - key: AUTO_BACKUP_ENABLED
+        value: "true"
+      - key: AUTO_BACKUP_TIME
+        value: "02:00"
+      - key: AUTO_BACKUP_RETENTION_DAYS
+        value: "30"
+      - key: JSON_BODY_LIMIT
+        value: "20mb"

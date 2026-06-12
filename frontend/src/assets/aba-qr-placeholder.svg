@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 330" role="img" aria-labelledby="title">
+  <title id="title">ABA QR placeholder</title>
+  <rect width="280" height="330" rx="22" fill="#fff"/>
+  <rect x="1" y="1" width="278" height="328" rx="21" fill="none" stroke="#dce3ec" stroke-width="2"/>
+  <rect x="20" y="20" width="240" height="54" rx="10" fill="#005bab"/>
+  <text x="140" y="55" text-anchor="middle" fill="#fff" font-family="Arial, sans-serif" font-size="28" font-weight="800">ABA PAY</text>
+  <g fill="#071b3a">
+    <path d="M30 94h64v64H30zm12 12v40h40v-40z"/>
+    <path d="M186 94h64v64h-64zm12 12v40h40v-40z"/>
+    <path d="M30 190h64v64H30zm12 12v40h40v-40z"/>
+    <path d="M112 94h18v18h-18zm28 0h18v36h-18zm-28 28h18v18h-18zm28 18h36v18h-36zm-28 18h18v36h-18zm28 14h18v18h-18zm28 0h18v36h-18zm28 0h18v18h-18zm-84 36h18v18h-18zm28-4h18v36h-18zm28 18h18v18h-18zm28-14h18v36h-18zm-84 52h18v18h-18zm28 0h46v18h-46z"/>
+  </g>
+  <text x="140" y="287" text-anchor="middle" fill="#071b3a" font-family="Arial, sans-serif" font-size="15" font-weight="700">REPLACE WITH YOUR QR</text>
+  <text x="140" y="310" text-anchor="middle" fill="#68778c" font-family="Arial, sans-serif" font-size="12">Payment placeholder only</text>
+</svg>
+
