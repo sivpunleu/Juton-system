@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: jotun-billing-api
+    name: jotun-mysql-api
     runtime: node
     plan: free
     rootDir: backend

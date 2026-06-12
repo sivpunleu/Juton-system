@@ -3,5 +3,6 @@ dist/
 .env
 *.log
 .DS_Store
+.tools/
 backend/data/*.json
 !backend/data/.gitkeep
