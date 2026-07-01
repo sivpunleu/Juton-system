@@ -41,6 +41,8 @@ const duplicatedFrom = ref('')
 const formReady = ref(false)
 const savedSnapshot = ref('')
 const allowNavigation = ref(false)
+const originalItems = ref([])
+const originalStockWillDeduct = ref(false)
 
 const addDays = (dateValue, days) => {
   const date = new Date(dateValue)
@@ -111,6 +113,8 @@ const resetInvoiceForm = () => {
   formReady.value = false
   savedSnapshot.value = ''
   allowNavigation.value = false
+  originalItems.value = []
+  originalStockWillDeduct.value = false
 }
 
 const lineTotal = (item) =>
@@ -138,6 +142,48 @@ const depositAmount = computed(
 const balanceDue = computed(() =>
   Math.max(0, grandTotal.value - depositAmount.value),
 )
+const stockWillDeduct = computed(() =>
+  ['unpaid', 'partially_paid', 'paid'].includes(form.status),
+)
+
+const productForItem = (item) =>
+  products.value.find(
+    (record) => String(record.id) === String(item.productId),
+  )
+
+const quantityForProduct = (items, productId) =>
+  items.reduce(
+    (sum, item) =>
+      String(item.productId || '') === String(productId)
+        ? sum + Number(item.quantity || 0)
+        : sum,
+    0,
+  )
+
+const stockStatusForItem = (item) => {
+  const product = productForItem(item)
+  if (!product) {
+    return { hasProduct: false, insufficient: false, message: '' }
+  }
+  const productId = String(item.productId || '')
+  const reservedForCurrentInvoice =
+    isEditing.value && originalStockWillDeduct.value
+      ? quantityForProduct(originalItems.value, productId)
+      : 0
+  const available = Number(product.stockQuantity || 0) + reservedForCurrentInvoice
+  const requested = quantityForProduct(form.items, productId)
+  const unit = product.unit || item.unit || ''
+  const insufficient =
+    stockWillDeduct.value && Number.isFinite(requested) && requested > available
+
+  return {
+    hasProduct: true,
+    insufficient,
+    message: insufficient
+      ? `Only ${available} ${unit} available; selected ${requested} ${unit}.`
+      : `Stock available: ${available} ${unit}`,
+  }
+}
 
 const loadLookups = async () => {
   const [customerResponse, productResponse, salespersonResponse] =
@@ -215,6 +261,20 @@ const loadInvoice = async () => {
   const sourceId = isEditing.value ? route.params.id : duplicateId.value
   if (!sourceId) return
   const { data } = await invoiceApi.get(sourceId)
+  const loadedStatus =
+    data.status ||
+    (data.paymentStatus === 'partial'
+      ? 'partially_paid'
+      : data.paymentStatus || 'unpaid')
+  originalItems.value = isEditing.value && Array.isArray(data.items)
+    ? data.items.map((item) => ({
+        productId: item.productId || '',
+        quantity: Number(item.quantity || 0),
+      }))
+    : []
+  originalStockWillDeduct.value =
+    isEditing.value &&
+    ['unpaid', 'partially_paid', 'paid'].includes(loadedStatus)
   Object.assign(form, {
     invoiceNumber: isEditing.value ? data.invoiceNumber : '',
     invoiceDate: isEditing.value ? toDateInput(data.invoiceDate) : toDateInput(),
@@ -233,12 +293,7 @@ const loadInvoice = async () => {
     taxRate: Number(data.taxRate || 0),
     deliveryFee: Number(data.deliveryFee || 0),
     depositRate: Number(data.depositRate || 0),
-    status: isEditing.value
-      ? data.status ||
-        (data.paymentStatus === 'partial'
-          ? 'partially_paid'
-          : data.paymentStatus || 'unpaid')
-      : 'unpaid',
+    status: isEditing.value ? loadedStatus : 'unpaid',
     notes: data.notes || '',
     items: Array.isArray(data.items)
       ? data.items.map((item) => ({
@@ -535,6 +590,13 @@ onBeforeUnmount(() => {
                         {{ product.name }} · {{ product.itemCode || 'No code' }} · {{ formatMoney(product.unitPrice) }}/{{ product.unit }}
                       </option>
                     </select>
+                    <small
+                      v-if="stockStatusForItem(item).hasProduct"
+                      class="stock-helper"
+                      :class="{ 'stock-helper-danger': stockStatusForItem(item).insufficient }"
+                    >
+                      {{ stockStatusForItem(item).message }}
+                    </small>
                   </div>
                   <div class="col-md-5">
                     <label class="form-label">ឈ្មោះផលិតផល *</label>
@@ -546,7 +608,21 @@ onBeforeUnmount(() => {
                   </div>
                   <div class="col-md-2">
                     <label class="form-label">បរិមាណ *</label>
-                    <input v-model.number="item.quantity" class="form-control" type="number" min="0.01" step="0.01" required />
+                    <input
+                      v-model.number="item.quantity"
+                      class="form-control"
+                      :class="{ 'is-invalid': stockStatusForItem(item).insufficient }"
+                      type="number"
+                      min="0.01"
+                      step="0.01"
+                      required
+                    />
+                    <small
+                      v-if="stockStatusForItem(item).insufficient"
+                      class="field-validation-message"
+                    >
+                      Quantity exceeds current stock.
+                    </small>
                   </div>
                   <div class="col-md-3">
                     <label class="form-label">ឯកតា *</label>
@@ -595,6 +671,19 @@ onBeforeUnmount(() => {
                 <option value="paid">Paid</option>
                 <option value="cancelled">Cancelled</option>
               </select>
+              <div
+                class="invoice-status-note"
+                :class="{ 'invoice-status-note-muted': !stockWillDeduct }"
+              >
+                <i :class="stockWillDeduct ? 'bi bi-box-arrow-down' : 'bi bi-pencil-square'"></i>
+                <span>
+                  {{
+                    stockWillDeduct
+                      ? 'Stock will be deducted when this invoice is saved.'
+                      : 'Draft or cancelled invoices do not deduct stock.'
+                  }}
+                </span>
+              </div>
               <small class="text-secondary">Paid/Partially Paid នឹងកែដោយស្វ័យប្រវត្តិតាម Payment History។</small>
             </div>
             <div class="mb-3">

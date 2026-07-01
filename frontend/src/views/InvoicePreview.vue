@@ -29,6 +29,7 @@ const khqrError = ref('')
 const recordingPayment = ref(false)
 const sendingTelegram = ref('')
 const telegramConfigured = ref(false)
+const previewScale = ref(1)
 const paymentForm = reactive({
   amount: 0,
   paidAt: toDateInput(),
@@ -53,6 +54,16 @@ const companySettings = reactive({
 })
 
 const printInvoice = () => window.print()
+const zoomPercent = computed(() => Math.round(previewScale.value * 100))
+const previewStyle = computed(() => ({
+  '--invoice-scale': previewScale.value,
+}))
+
+const setPreviewScale = (value) => {
+  previewScale.value = Math.min(1.2, Math.max(0.72, value))
+}
+
+const zoomPreview = (step) => setPreviewScale(previewScale.value + step)
 
 const formatInvoiceDate = (value) => {
   if (!value) return '-'
@@ -260,16 +271,50 @@ onMounted(() => {
         v-if="showAdminControls"
         class="btn btn-outline-secondary"
         to="/invoices"
+        title="Back to invoices"
       >
         <i class="bi bi-arrow-left me-1"></i>
         បញ្ជីវិក្កយបត្រ
       </RouterLink>
       <span v-else></span>
-      <div class="d-flex flex-wrap gap-2">
+      <div class="preview-toolbar">
+        <div
+          v-if="invoice"
+          class="preview-zoom-controls"
+          aria-label="Invoice preview zoom controls"
+        >
+          <button
+            class="btn btn-outline-secondary btn-icon"
+            type="button"
+            title="Zoom out"
+            aria-label="Zoom out"
+            @click="zoomPreview(-0.08)"
+          >
+            <i class="bi bi-dash-lg"></i>
+          </button>
+          <button
+            class="btn btn-outline-secondary preview-zoom-value"
+            type="button"
+            title="Fit invoice to screen"
+            @click="setPreviewScale(0.9)"
+          >
+            {{ zoomPercent }}%
+          </button>
+          <button
+            class="btn btn-outline-secondary btn-icon"
+            type="button"
+            title="Zoom in"
+            aria-label="Zoom in"
+            @click="zoomPreview(0.08)"
+          >
+            <i class="bi bi-plus-lg"></i>
+          </button>
+        </div>
         <RouterLink
           v-if="invoice && showManageControls"
           class="btn btn-outline-primary"
           :to="{ name: 'invoice-edit', params: { id: invoice.id } }"
+          title="Edit invoice"
         >
           <i class="bi bi-pencil me-1"></i>
           កែប្រែ
@@ -281,6 +326,7 @@ onMounted(() => {
             name: 'invoice-create',
             query: { duplicate: invoice.id },
           }"
+          title="Duplicate invoice"
         >
           <i class="bi bi-copy me-1"></i>
           ចម្លងវិក្កយបត្រ
@@ -308,6 +354,7 @@ onMounted(() => {
           v-if="invoice && showManageControls"
           class="btn btn-outline-danger"
           type="button"
+          title="Delete invoice"
           @click="deleteInvoice"
         >
           <i class="bi bi-trash3 me-1"></i>
@@ -317,6 +364,7 @@ onMounted(() => {
           v-if="invoice"
           class="btn btn-danger"
           type="button"
+          title="Print or save invoice as PDF"
           @click="printInvoice"
         >
           <i class="bi bi-printer me-1"></i>
@@ -427,6 +475,7 @@ onMounted(() => {
                   <div class="d-inline-flex gap-1">
                     <RouterLink
                       class="btn btn-sm btn-outline-primary"
+                      title="Print payment receipt"
                       :to="{
                         name: 'payment-receipt',
                         params: {
@@ -465,7 +514,12 @@ onMounted(() => {
       </div>
     </div>
 
-    <article v-if="invoice" class="invoice-paper classic-invoice">
+    <div
+      v-if="invoice"
+      class="invoice-paper-viewport"
+      :style="previewStyle"
+    >
+    <article class="invoice-paper classic-invoice">
       <header class="classic-header">
         <div class="classic-brand-block">
           <img class="classic-logo" :src="companySettings.logo || logo" alt="Marvel Decor" />
@@ -692,5 +746,6 @@ onMounted(() => {
         <strong>{{ companySettings.footerKh }}</strong>
       </footer>
     </article>
+    </div>
   </section>
 </template>

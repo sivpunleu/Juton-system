@@ -547,6 +547,9 @@ onMounted(initialize)
               {{ formatDate(report.range.to) }}
             </small>
           </div>
+          <div class="chart-key">
+            <span><i class="chart-key-dot revenue"></i> Paid revenue</span>
+          </div>
         </div>
         <div v-if="report.trend.length" class="revenue-chart">
           <div
@@ -580,6 +583,11 @@ onMounted(initialize)
             </small>
           </div>
           <span class="role-badge">{{ analytics.summary.invoiceCount }} invoices</span>
+        </div>
+        <div class="chart-key analytics-key">
+          <span><i class="chart-key-dot revenue"></i> Monthly paid</span>
+          <span><i class="chart-key-dot best"></i> Product sales</span>
+          <span><i class="chart-key-dot debt"></i> Debt aging</span>
         </div>
 
         <div class="analytics-strip">
@@ -634,7 +642,7 @@ onMounted(initialize)
             >
               <div class="analytics-row-heading">
                 <span>{{ item.productName }}</span>
-                <strong>{{ item.quantity }} {{ item.unit }}</strong>
+                <strong>{{ item.quantity }} {{ item.unit }} / {{ formatMoney(item.amount) }}</strong>
               </div>
               <div class="analytics-bar-track">
                 <i
