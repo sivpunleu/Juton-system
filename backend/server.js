@@ -2,6 +2,10 @@ import cors from 'cors'
 import dotenv from 'dotenv'
 import express from 'express'
 import connectDatabase, { getStorageMode } from './config/database.js'
+import {
+  apiRateLimit,
+  securityHeaders,
+} from './middleware/securityMiddleware.js'
 import auditRoutes from './routes/auditRoutes.js'
 import authRoutes from './routes/authRoutes.js'
 import customerRoutes from './routes/customerRoutes.js'
@@ -24,6 +28,9 @@ const allowedOrigins = (process.env.CLIENT_URL || 'http://localhost:5173')
   .filter(Boolean)
 
 app.set('trust proxy', 1)
+app.disable('x-powered-by')
+
+app.use(securityHeaders)
 
 app.use(
   cors({
@@ -35,7 +42,13 @@ app.use(
     },
   }),
 )
-app.use(express.json({ limit: process.env.JSON_BODY_LIMIT || '20mb' }))
+app.use('/api', apiRateLimit)
+app.use(
+  express.json({
+    limit: process.env.JSON_BODY_LIMIT || '10mb',
+    strict: true,
+  }),
+)
 
 app.get('/api/health', (_req, res) => {
   res.json({

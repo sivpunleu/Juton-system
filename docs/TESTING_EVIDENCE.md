@@ -26,6 +26,7 @@ Note: Vite reports a chunk-size warning after build. It is not a failing error, 
 | 11 | Restore backup | Data is restored and safety backup is created first | PASS |
 | 12 | KHQR payment data | Active unpaid invoice receives dynamic KHQR payload | PASS |
 | 13 | Role access control | Owner/admin/viewer permissions are enforced | PASS |
+| 14 | Security hardening | Helmet headers, API rate limit, strong password policy, and CORS config are enabled | PASS |
 
 ## Screenshot Checklist
 

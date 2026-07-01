@@ -25,6 +25,9 @@ import {
 } from '../middleware/loginRateLimit.js'
 
 const PASSWORD_MINIMUM_LENGTH = 10
+const PASSWORD_COMPLEXITY_PATTERN =
+  /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9])/
+const USERNAME_PATTERN = /^[a-z0-9._-]{3,40}$/
 const VALID_ROLES = ['owner', 'admin', 'viewer']
 const AVATAR_PATTERN = /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/
 const MAX_AVATAR_LENGTH = 350_000
@@ -41,10 +44,30 @@ const publicAdmin = (admin) => ({
 })
 
 const validatePassword = (password) => {
-  if (String(password || '').length < PASSWORD_MINIMUM_LENGTH) {
+  const value = String(password || '')
+  if (value.length < PASSWORD_MINIMUM_LENGTH) {
     throw new Error(
       `Password must contain at least ${PASSWORD_MINIMUM_LENGTH} characters`,
     )
+  }
+  if (!PASSWORD_COMPLEXITY_PATTERN.test(value)) {
+    throw new Error(
+      'Password must include uppercase, lowercase, number, and symbol',
+    )
+  }
+}
+
+const validateUsername = (username) => {
+  if (!USERNAME_PATTERN.test(username)) {
+    throw new Error(
+      'Username must be 3-40 characters and use letters, numbers, dot, underscore, or dash only',
+    )
+  }
+}
+
+const validateDisplayName = (displayName) => {
+  if (String(displayName || '').length > 80) {
+    throw new Error('Display name cannot exceed 80 characters')
   }
 }
 
@@ -156,9 +179,7 @@ export const updateProfile = async (req, res) => {
 
     const displayName = String(req.body.displayName || '').trim()
     const avatar = String(req.body.avatar || '').trim()
-    if (displayName.length > 80) {
-      throw new Error('Display name cannot exceed 80 characters')
-    }
+    validateDisplayName(displayName)
     if (
       avatar &&
       (!AVATAR_PATTERN.test(avatar) || avatar.length > MAX_AVATAR_LENGTH)
@@ -260,7 +281,8 @@ export const addAdmin = async (req, res) => {
     const displayName = String(req.body.displayName || '').trim()
     const role = VALID_ROLES.includes(req.body.role) ? req.body.role : 'admin'
     validatePassword(req.body.password)
-    if (!username) throw new Error('Username is required')
+    validateUsername(username)
+    validateDisplayName(displayName)
 
     const admin = await createAdmin({
       username,
@@ -293,6 +315,7 @@ export const editAdmin = async (req, res) => {
     const payload = {}
     if (req.body.displayName !== undefined) {
       payload.displayName = String(req.body.displayName || '').trim()
+      validateDisplayName(payload.displayName)
     }
     if (req.body.role !== undefined) {
       if (!VALID_ROLES.includes(req.body.role)) {
