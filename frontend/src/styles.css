@@ -2973,6 +2973,113 @@ textarea {
   min-height: 260px;
 }
 
+.analytics-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(120px, 1fr));
+  gap: 14px;
+  margin: 20px 0 26px;
+}
+
+.analytics-strip > div {
+  padding: 14px 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.analytics-strip span,
+.analytics-row-heading span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.analytics-strip strong {
+  display: block;
+  margin-top: 4px;
+  color: var(--navy);
+  font-size: 1.05rem;
+}
+
+.analytics-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 24px;
+}
+
+.analytics-block {
+  min-width: 0;
+}
+
+.analytics-block h3,
+.analytics-low-stock h3 {
+  margin: 0 0 14px;
+  color: var(--navy);
+  font-size: 0.9rem;
+  font-weight: 900;
+}
+
+.analytics-row {
+  display: grid;
+  gap: 7px;
+  margin-bottom: 12px;
+}
+
+.analytics-row-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.analytics-row-heading span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.analytics-row-heading strong {
+  color: var(--ink);
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+
+.analytics-bar-track {
+  height: 9px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e9eef4;
+}
+
+.analytics-bar-fill {
+  display: block;
+  height: 100%;
+  min-width: 4px;
+  border-radius: inherit;
+}
+
+.analytics-bar-fill.revenue {
+  background: linear-gradient(90deg, #0f9b70, #39c99a);
+}
+
+.analytics-bar-fill.best {
+  background: linear-gradient(90deg, #2f6edb, #43b8d8);
+}
+
+.analytics-bar-fill.debt {
+  background: linear-gradient(90deg, var(--red), #f2a04f);
+}
+
+.analytics-empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.analytics-low-stock {
+  margin-top: 26px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+
 .statement-page,
 .receipt-page {
   max-width: 1020px;
@@ -3333,6 +3440,10 @@ textarea {
   .report-filters .btn {
     width: 100%;
   }
+
+  .analytics-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media screen and (max-width: 991px) {
@@ -3582,6 +3693,11 @@ textarea {
   }
 
   .report-filters {
+    grid-template-columns: 1fr;
+  }
+
+  .analytics-strip,
+  .analytics-grid {
     grid-template-columns: 1fr;
   }
 

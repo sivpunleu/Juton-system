@@ -168,6 +168,9 @@ export const reportApi = {
   revenue(params = {}) {
     return api.get('/reports/revenue', { params })
   },
+  analytics(params = {}) {
+    return api.get('/reports/analytics', { params })
+  },
   exportCsv() {
     return downloadBlob('/reports/invoices.csv', 'invoices.csv')
   },

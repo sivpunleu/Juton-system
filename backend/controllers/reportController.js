@@ -58,6 +58,32 @@ const groupKey = (dateValue, groupBy) => {
   return date.toISOString().slice(0, 10)
 }
 
+const parseAnalyticsRange = (query) => {
+  const to = query.to ? new Date(query.to) : new Date()
+  const from = query.from
+    ? new Date(query.from)
+    : new Date(to.getFullYear(), to.getMonth() - 11, 1)
+  if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
+    throw new Error('Analytics date range is invalid')
+  }
+  from.setHours(0, 0, 0, 0)
+  to.setHours(23, 59, 59, 999)
+  return { from, to }
+}
+
+const ageBucket = (dueDate, now = new Date()) => {
+  const due = new Date(dueDate)
+  due.setHours(0, 0, 0, 0)
+  const today = new Date(now)
+  today.setHours(0, 0, 0, 0)
+  const days = Math.floor((today - due) / 86400000)
+  if (days <= 0) return 'current'
+  if (days <= 30) return '1-30'
+  if (days <= 60) return '31-60'
+  if (days <= 90) return '61-90'
+  return '90+'
+}
+
 export const getRevenueReport = async (req, res) => {
   try {
     const { from, to } = parseDateRange(req.query)
@@ -338,6 +364,152 @@ export const exportDatabaseBackup = async (req, res) => {
     res.send(JSON.stringify(backup, null, 2))
   } catch (error) {
     res.status(500).json({ message: error.message || 'Unable to create backup' })
+  }
+}
+
+export const getReportAnalytics = async (req, res) => {
+  try {
+    const { from, to } = parseAnalyticsRange(req.query)
+    const [invoices, products] = await Promise.all([
+      getAllInvoices(),
+      getAllCatalogRecords('products'),
+    ])
+    const activeInvoices = invoices.filter(
+      (invoice) =>
+        !invoice.deletedAt &&
+        !['draft', 'cancelled'].includes(resolvedStatus(invoice)),
+    )
+    const periodInvoices = activeInvoices.filter((invoice) => {
+      const date = new Date(invoice.invoiceDate)
+      return date >= from && date <= to
+    })
+
+    const monthlyMap = new Map()
+    for (const invoice of periodInvoices) {
+      const key = groupKey(invoice.invoiceDate, 'month')
+      const current = monthlyMap.get(key) || {
+        label: key,
+        invoiceCount: 0,
+        invoiced: 0,
+        paid: 0,
+        outstanding: 0,
+      }
+      current.invoiceCount += 1
+      current.invoiced += Number(invoice.grandTotal || 0)
+      current.paid += paidAmount(invoice)
+      current.outstanding += Number(invoice.balanceDue || 0)
+      monthlyMap.set(key, current)
+    }
+
+    const productMap = new Map()
+    for (const invoice of periodInvoices) {
+      for (const item of invoice.items || []) {
+        const key = [
+          item.productId || item.description,
+          item.colorCode || '',
+          item.unit || '',
+        ].join('::')
+        const current = productMap.get(key) || {
+          key,
+          productId: item.productId || null,
+          productName: item.description || 'Unknown product',
+          colorCode: item.colorCode || '',
+          unit: item.unit || '',
+          quantity: 0,
+          amount: 0,
+        }
+        current.quantity += Number(item.quantity || 0)
+        current.amount += Number(item.total || 0)
+        productMap.set(key, current)
+      }
+    }
+
+    const debtBuckets = ['current', '1-30', '31-60', '61-90', '90+'].reduce(
+      (result, bucket) => ({
+        ...result,
+        [bucket]: { bucket, invoiceCount: 0, amount: 0 },
+      }),
+      {},
+    )
+    for (const invoice of activeInvoices) {
+      const balance = Number(invoice.balanceDue || 0)
+      if (balance <= 0 || resolvedStatus(invoice) === 'paid') continue
+      const bucket = ageBucket(invoice.dueDate)
+      debtBuckets[bucket].invoiceCount += 1
+      debtBuckets[bucket].amount += balance
+    }
+
+    const lowStock = products
+      .filter(
+        (product) =>
+          !product.deletedAt &&
+          Number(product.stockQuantity || 0) <=
+            Number(product.lowStockThreshold ?? 5),
+      )
+      .map((product) => ({
+        id: product.id,
+        name: product.name,
+        itemCode: product.itemCode || '',
+        stockQuantity: Number(product.stockQuantity || 0),
+        lowStockThreshold: Number(product.lowStockThreshold ?? 5),
+        unit: product.unit || '',
+      }))
+      .sort(
+        (left, right) =>
+          left.stockQuantity - right.stockQuantity ||
+          left.name.localeCompare(right.name),
+      )
+      .slice(0, 10)
+
+    res.json({
+      range: {
+        from: from.toISOString(),
+        to: to.toISOString(),
+      },
+      summary: {
+        invoiceCount: periodInvoices.length,
+        invoiced: roundMoney(
+          periodInvoices.reduce(
+            (sum, invoice) => sum + Number(invoice.grandTotal || 0),
+            0,
+          ),
+        ),
+        paid: roundMoney(
+          periodInvoices.reduce((sum, invoice) => sum + paidAmount(invoice), 0),
+        ),
+        outstanding: roundMoney(
+          activeInvoices.reduce(
+            (sum, invoice) => sum + Number(invoice.balanceDue || 0),
+            0,
+          ),
+        ),
+      },
+      monthlyRevenue: Array.from(monthlyMap.values())
+        .map((item) => ({
+          ...item,
+          invoiced: roundMoney(item.invoiced),
+          paid: roundMoney(item.paid),
+          outstanding: roundMoney(item.outstanding),
+        }))
+        .sort((left, right) => left.label.localeCompare(right.label)),
+      bestSellingProducts: Array.from(productMap.values())
+        .map((item) => ({
+          ...item,
+          quantity: roundMoney(item.quantity),
+          amount: roundMoney(item.amount),
+        }))
+        .sort((left, right) => right.amount - left.amount)
+        .slice(0, 10),
+      debtAging: Object.values(debtBuckets).map((bucket) => ({
+        ...bucket,
+        amount: roundMoney(bucket.amount),
+      })),
+      lowStock,
+    })
+  } catch (error) {
+    res.status(400).json({
+      message: error.message || 'Unable to generate analytics report',
+    })
   }
 }
 

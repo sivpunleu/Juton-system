@@ -5,8 +5,11 @@ import AuditLog from '../models/AuditLog.js'
 import BackupSnapshot from '../models/BackupSnapshot.js'
 import Customer from '../models/Customer.js'
 import Invoice from '../models/Invoice.js'
+import InvoiceItem from '../models/InvoiceItem.js'
+import InvoicePayment from '../models/InvoicePayment.js'
 import Product from '../models/Product.js'
 import Salesperson from '../models/Salesperson.js'
+import StockMovement from '../models/StockMovement.js'
 import SystemSetting from '../models/SystemSetting.js'
 
 const models = [
@@ -15,8 +18,11 @@ const models = [
   BackupSnapshot,
   Customer,
   Invoice,
+  InvoiceItem,
+  InvoicePayment,
   Product,
   Salesperson,
+  StockMovement,
   SystemSetting,
 ]
 

@@ -44,6 +44,42 @@ test('local stock movements and system settings persist correctly', async () => 
     assert.equal(stockedOut.stockMovements.length, 2)
     assert.equal(stockedOut.stockMovements[1].resultingStock, 11)
 
+    const invoices = await import(
+      `../repositories/invoiceRepository.js?stock=${Date.now()}`
+    )
+    const invoice = await invoices.insertInvoice({
+      invoiceNumber: 'INV-2026-00010',
+      invoiceDate: '2026-06-10T00:00:00.000Z',
+      dueDate: '2026-06-15T00:00:00.000Z',
+      customer: { name: 'Stock Customer' },
+      items: [
+        {
+          productId: product.id,
+          description: product.name,
+          quantity: 3,
+          unit: product.unit,
+          unitPrice: product.unitPrice,
+          total: 75,
+        },
+      ],
+      subtotal: 75,
+      grandTotal: 75,
+      paidAmount: 0,
+      balanceDue: 75,
+      status: 'unpaid',
+    })
+    assert.equal(invoice.stockApplied, true)
+
+    const afterInvoice = await catalog.findCatalogRecord('products', product.id)
+    assert.equal(afterInvoice.stockQuantity, 8)
+
+    await invoices.replaceInvoice(invoice.id, (existing) => ({
+      ...existing,
+      status: 'cancelled',
+    }))
+    const afterCancel = await catalog.findCatalogRecord('products', product.id)
+    assert.equal(afterCancel.stockQuantity, 11)
+
     const salesperson = await catalog.createCatalogRecord('salespeople', {
       name: 'Sokha Sale',
       phone: '012 345 678',
@@ -154,6 +190,15 @@ test('revenue report groups deposits and payment history by date', async () => {
     assert.equal(responseBody.salesPerformance[0].invoiced, 100)
     assert.equal(responseBody.salesItems[0].productName, 'Jotun Paint')
     assert.equal(responseBody.salesItems[0].quantity, 2)
+
+    await controller.getReportAnalytics(req, res)
+    assert.equal(statusCode, 200)
+    assert.equal(responseBody.monthlyRevenue[0].label, '2026-06')
+    assert.equal(responseBody.bestSellingProducts[0].productName, 'Jotun Paint')
+    assert.equal(
+      responseBody.debtAging.reduce((sum, item) => sum + item.amount, 0),
+      50,
+    )
   } finally {
     delete process.env.LOCAL_DATA_DIR
     await rm(dataDirectory, { recursive: true, force: true })

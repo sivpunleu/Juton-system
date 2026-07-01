@@ -19,6 +19,7 @@ import {
 } from '../ui/feedback'
 
 const report = ref(null)
+const analytics = ref(null)
 const loading = ref(true)
 const error = ref('')
 const salespeople = ref([])
@@ -39,12 +40,35 @@ const filters = reactive({
 const maxRevenue = computed(() =>
   Math.max(1, ...(report.value?.trend || []).map((item) => item.revenue)),
 )
+const maxMonthlyPaid = computed(() =>
+  Math.max(
+    1,
+    ...(analytics.value?.monthlyRevenue || []).map((item) => item.paid),
+  ),
+)
+const maxBestSellerAmount = computed(() =>
+  Math.max(
+    1,
+    ...(analytics.value?.bestSellingProducts || []).map((item) => item.amount),
+  ),
+)
+const maxDebtAmount = computed(() =>
+  Math.max(1, ...(analytics.value?.debtAging || []).map((item) => item.amount)),
+)
 
 const loadReport = async () => {
   loading.value = true
   error.value = ''
   try {
-    report.value = (await reportApi.revenue(filters)).data
+    const [revenueResponse, analyticsResponse] = await Promise.all([
+      reportApi.revenue(filters),
+      reportApi.analytics({
+        from: filters.from,
+        to: filters.to,
+      }),
+    ])
+    report.value = revenueResponse.data
+    analytics.value = analyticsResponse.data
   } catch (requestError) {
     error.value =
       requestError.response?.data?.message || 'Unable to load report'
@@ -544,6 +568,143 @@ onMounted(initialize)
         <div v-else class="empty-state report-empty">
           <i class="bi bi-bar-chart"></i>
           <span>មិនមានចំណូលក្នុងរយៈពេលនេះ</span>
+        </div>
+      </div>
+
+      <div v-if="analytics" class="content-card form-card mb-4">
+        <div class="card-toolbar">
+          <div>
+            <h2 class="panel-title mb-1">Business Analytics</h2>
+            <small class="text-secondary">
+              Monthly revenue, best-selling products, customer debt aging, and low stock
+            </small>
+          </div>
+          <span class="role-badge">{{ analytics.summary.invoiceCount }} invoices</span>
+        </div>
+
+        <div class="analytics-strip">
+          <div>
+            <span>Invoiced</span>
+            <strong>{{ formatMoney(analytics.summary.invoiced) }}</strong>
+          </div>
+          <div>
+            <span>Paid</span>
+            <strong>{{ formatMoney(analytics.summary.paid) }}</strong>
+          </div>
+          <div>
+            <span>Outstanding</span>
+            <strong>{{ formatMoney(analytics.summary.outstanding) }}</strong>
+          </div>
+          <div>
+            <span>Low Stock</span>
+            <strong>{{ analytics.lowStock.length }}</strong>
+          </div>
+        </div>
+
+        <div class="analytics-grid">
+          <section class="analytics-block">
+            <h3>Monthly Revenue</h3>
+            <div
+              v-for="item in analytics.monthlyRevenue"
+              :key="item.label"
+              class="analytics-row"
+            >
+              <div class="analytics-row-heading">
+                <span>{{ item.label }}</span>
+                <strong>{{ formatMoney(item.paid) }}</strong>
+              </div>
+              <div class="analytics-bar-track">
+                <i
+                  class="analytics-bar-fill revenue"
+                  :style="{ width: `${Math.max(4, (item.paid / maxMonthlyPaid) * 100)}%` }"
+                ></i>
+              </div>
+            </div>
+            <p v-if="!analytics.monthlyRevenue.length" class="analytics-empty">
+              No monthly revenue in this range
+            </p>
+          </section>
+
+          <section class="analytics-block">
+            <h3>Best-Selling Products</h3>
+            <div
+              v-for="item in analytics.bestSellingProducts"
+              :key="item.key"
+              class="analytics-row"
+            >
+              <div class="analytics-row-heading">
+                <span>{{ item.productName }}</span>
+                <strong>{{ item.quantity }} {{ item.unit }}</strong>
+              </div>
+              <div class="analytics-bar-track">
+                <i
+                  class="analytics-bar-fill best"
+                  :style="{ width: `${Math.max(4, (item.amount / maxBestSellerAmount) * 100)}%` }"
+                ></i>
+              </div>
+            </div>
+            <p v-if="!analytics.bestSellingProducts.length" class="analytics-empty">
+              No product sales in this range
+            </p>
+          </section>
+
+          <section class="analytics-block">
+            <h3>Debt Aging</h3>
+            <div
+              v-for="item in analytics.debtAging"
+              :key="item.bucket"
+              class="analytics-row"
+            >
+              <div class="analytics-row-heading">
+                <span>{{ item.bucket }}</span>
+                <strong>{{ formatMoney(item.amount) }}</strong>
+              </div>
+              <div class="analytics-bar-track">
+                <i
+                  class="analytics-bar-fill debt"
+                  :style="{ width: `${Math.max(4, (item.amount / maxDebtAmount) * 100)}%` }"
+                ></i>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <div class="analytics-low-stock">
+          <div class="card-toolbar">
+            <h3>Low Stock Watchlist</h3>
+            <span class="role-badge">{{ analytics.lowStock.length }} products</span>
+          </div>
+          <div class="table-responsive">
+            <table class="table invoice-table responsive-table mb-0">
+              <thead>
+                <tr>
+                  <th>Product</th>
+                  <th>Item Code</th>
+                  <th class="text-end">Stock</th>
+                  <th class="text-end">Threshold</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="product in analytics.lowStock" :key="product.id">
+                  <td class="mobile-card-primary" data-label="Product">
+                    {{ product.name }}
+                  </td>
+                  <td data-label="Item Code">{{ product.itemCode || '-' }}</td>
+                  <td class="text-end" data-label="Stock">
+                    {{ product.stockQuantity }} {{ product.unit }}
+                  </td>
+                  <td class="text-end" data-label="Threshold">
+                    {{ product.lowStockThreshold }} {{ product.unit }}
+                  </td>
+                </tr>
+                <tr v-if="!analytics.lowStock.length">
+                  <td colspan="4" class="text-center text-secondary py-4">
+                    No low-stock products
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
 

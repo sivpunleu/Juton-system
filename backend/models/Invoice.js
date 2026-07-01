@@ -105,6 +105,11 @@ const Invoice = sequelize.define(
       defaultValue: 'unpaid',
     },
     payments: { type: DataTypes.JSON, allowNull: true },
+    stockApplied: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+    },
     notes: textField(),
     createdBy: { type: DataTypes.STRING(80), allowNull: false, defaultValue: '' },
     updatedBy: { type: DataTypes.STRING(80), allowNull: false, defaultValue: '' },

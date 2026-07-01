@@ -4,6 +4,8 @@ import { getStorageMode, sequelize } from '../config/database.js'
 import Customer from '../models/Customer.js'
 import Product from '../models/Product.js'
 import Salesperson from '../models/Salesperson.js'
+import StockMovement from '../models/StockMovement.js'
+import { asPlainObject } from '../models/modelHelpers.js'
 import {
   mutateLocalCollection,
   readLocalCollection,
@@ -19,6 +21,42 @@ const getConfig = (type) => {
   const config = catalogConfig[type]
   if (!config) throw new Error('Unknown catalogue type')
   return config
+}
+
+const stockMovementFromRow = (row) => ({
+  id: row.id,
+  type: row.type,
+  quantity: Number(row.quantity || 0),
+  previousStock: Number(row.previousStock || 0),
+  resultingStock: Number(row.resultingStock || 0),
+  note: row.note || '',
+  recordedBy: row.recordedBy || '',
+  recordedAt: row.recordedAt,
+  source: row.source || 'manual',
+  invoiceId: row.invoiceId || null,
+  referenceNumber: row.referenceNumber || '',
+})
+
+const hydrateProductStockMovements = async (record, options = {}) => {
+  if (!record || getStorageMode() !== 'mysql') return record
+  const product = asPlainObject(record)
+  const rows = await StockMovement.findAll({
+    where: { productId: product.id },
+    order: [['recordedAt', 'ASC'], ['createdAt', 'ASC']],
+    raw: true,
+    transaction: options.transaction,
+  })
+  return {
+    ...product,
+    stockMovements: rows.length
+      ? rows.map(stockMovementFromRow)
+      : product.stockMovements || [],
+  }
+}
+
+const hydrateCatalogRecords = async (type, records) => {
+  if (type !== 'products' || getStorageMode() !== 'mysql') return records
+  return Promise.all(records.map((record) => hydrateProductStockMovements(record)))
 }
 
 const searchFields = (type) =>
@@ -68,7 +106,12 @@ export const listCatalogRecords = async (
       offset: (normalizedPage - 1) * normalizedLimit,
       limit: normalizedLimit,
     })
-    return { items, total, page: normalizedPage, limit: normalizedLimit }
+    return {
+      items: await hydrateCatalogRecords(type, items),
+      total,
+      page: normalizedPage,
+      limit: normalizedLimit,
+    }
   }
 
   const records = (await readLocalCollection(type))
@@ -89,7 +132,10 @@ export const listCatalogRecords = async (
 export const findCatalogRecord = async (type, id) => {
   const { Model } = getConfig(type)
   if (getStorageMode() === 'mysql') {
-    return Model.findOne({ where: { id, deletedAt: null } })
+    const record = await Model.findOne({ where: { id, deletedAt: null } })
+    return type === 'products'
+      ? hydrateProductStockMovements(record)
+      : record
   }
   const records = await readLocalCollection(type)
   return (
@@ -101,7 +147,12 @@ export const findCatalogRecord = async (type, id) => {
 
 export const createCatalogRecord = async (type, payload) => {
   const { Model, duplicateField } = getConfig(type)
-  if (getStorageMode() === 'mysql') return Model.create(payload)
+  if (getStorageMode() === 'mysql') {
+    const record = await Model.create(payload)
+    return type === 'products'
+      ? hydrateProductStockMovements(record)
+      : record
+  }
 
   return mutateLocalCollection(type, (records) => {
     if (
@@ -134,7 +185,10 @@ export const updateCatalogRecord = async (type, id, payload) => {
   if (getStorageMode() === 'mysql') {
     const record = await Model.findOne({ where: { id, deletedAt: null } })
     if (!record) return null
-    return record.update(payload)
+    const updated = await record.update(payload)
+    return type === 'products'
+      ? hydrateProductStockMovements(updated)
+      : updated
   }
 
   return mutateLocalCollection(type, (records) => {
@@ -208,6 +262,10 @@ export const restoreCatalogRecord = async (type, id, actor) => {
 export const getAllCatalogRecords = async (type) => {
   const { Model } = getConfig(type)
   if (getStorageMode() === 'mysql') {
+    if (type === 'products') {
+      const products = await Model.findAll()
+      return hydrateCatalogRecords(type, products)
+    }
     return Model.findAll({ raw: true })
   }
   return readLocalCollection(type)
@@ -256,7 +314,7 @@ export const recordProductStockMovement = async (
       })
       if (!product) return null
       const { resultingStock, movement } = applyMovement(product)
-      return product.update(
+      const updated = await product.update(
         {
           stockQuantity: resultingStock,
           stockMovements: [...(product.stockMovements || []), movement],
@@ -264,6 +322,17 @@ export const recordProductStockMovement = async (
         },
         { transaction },
       )
+      await StockMovement.create(
+        {
+          ...movement,
+          productId: product.id,
+          invoiceId: null,
+          source: 'manual',
+          referenceNumber: '',
+        },
+        { transaction },
+      )
+      return hydrateProductStockMovements(updated, { transaction })
     })
   }
 

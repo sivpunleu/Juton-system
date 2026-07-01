@@ -4,6 +4,7 @@ import {
   downloadBackupSnapshot,
   exportDatabaseBackup,
   exportInvoicesCsv,
+  getReportAnalytics,
   getRevenueReport,
   listBackupSnapshots,
   restoreBackupSnapshot,
@@ -17,6 +18,7 @@ import {
 const router = express.Router()
 
 router.get('/revenue', requireAdmin, getRevenueReport)
+router.get('/analytics', requireAdmin, getReportAnalytics)
 router.get('/invoices.csv', requireAdmin, exportInvoicesCsv)
 router.get(
   '/backups',

@@ -4,8 +4,11 @@ import AuditLog from '../models/AuditLog.js'
 import Counter from '../models/Counter.js'
 import Customer from '../models/Customer.js'
 import Invoice from '../models/Invoice.js'
+import InvoiceItem from '../models/InvoiceItem.js'
+import InvoicePayment from '../models/InvoicePayment.js'
 import Product from '../models/Product.js'
 import Salesperson from '../models/Salesperson.js'
+import StockMovement from '../models/StockMovement.js'
 import SystemSetting from '../models/SystemSetting.js'
 import { getAllAdminsForBackup } from '../repositories/adminRepository.js'
 import {
@@ -140,6 +143,9 @@ const prepareRelationalBackup = (backup) => {
         id: uuidPattern.test(String(movement.id || ''))
           ? movement.id
           : randomUUID(),
+        invoiceId: movement.invoiceId
+          ? mappedId(movement.invoiceId, invoices.map)
+          : null,
       })),
     })),
     invoices: invoices.values.map((invoice) => ({
@@ -268,6 +274,9 @@ const replaceLocalCollection = async (name, records) =>
 const restoreMysql = async (backup) =>
   sequelize.transaction(async (transaction) => {
     const options = { transaction }
+    await StockMovement.destroy({ where: {}, ...options })
+    await InvoicePayment.destroy({ where: {}, ...options })
+    await InvoiceItem.destroy({ where: {}, ...options })
     await Invoice.destroy({ where: {}, ...options })
     await Customer.destroy({ where: {}, ...options })
     await Product.destroy({ where: {}, ...options })
@@ -287,6 +296,38 @@ const restoreMysql = async (backup) =>
     }
     if (backup.invoices.length) {
       await Invoice.bulkCreate(backup.invoices, options)
+    }
+    const invoiceItems = backup.invoices.flatMap((invoice) =>
+      (invoice.items || []).map((item, index) => ({
+        ...item,
+        invoiceId: invoice.id,
+        sortOrder: index,
+      })),
+    )
+    const invoicePayments = backup.invoices.flatMap((invoice) =>
+      (invoice.payments || []).map((payment) => ({
+        ...payment,
+        invoiceId: invoice.id,
+        paidAt: payment.paidAt || payment.createdAt || invoice.invoiceDate,
+      })),
+    )
+    const stockMovements = backup.products.flatMap((product) =>
+      (product.stockMovements || []).map((movement) => ({
+        ...movement,
+        productId: product.id,
+        recordedAt: movement.recordedAt || product.updatedAt || new Date(),
+        source: movement.source || 'migration',
+        referenceNumber: movement.referenceNumber || '',
+      })),
+    )
+    if (invoiceItems.length) {
+      await InvoiceItem.bulkCreate(invoiceItems, options)
+    }
+    if (invoicePayments.length) {
+      await InvoicePayment.bulkCreate(invoicePayments, options)
+    }
+    if (stockMovements.length) {
+      await StockMovement.bulkCreate(stockMovements, options)
     }
     if (backup.auditLogs.length) {
       await AuditLog.bulkCreate(backup.auditLogs, options)

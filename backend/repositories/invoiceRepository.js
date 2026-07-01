@@ -6,6 +6,11 @@ import {
 } from '../config/database.js'
 import Counter from '../models/Counter.js'
 import Invoice from '../models/Invoice.js'
+import InvoiceItem from '../models/InvoiceItem.js'
+import InvoicePayment from '../models/InvoicePayment.js'
+import Product from '../models/Product.js'
+import StockMovement from '../models/StockMovement.js'
+import { asPlainObject } from '../models/modelHelpers.js'
 import { createShareToken } from '../utils/shareToken.js'
 import {
   mutateLocalCollection,
@@ -19,6 +24,12 @@ const duplicateInvoiceError = () => {
 }
 
 const paymentError = (message) => {
+  const error = new Error(message)
+  error.statusCode = 400
+  return error
+}
+
+const stockError = (message) => {
   const error = new Error(message)
   error.statusCode = 400
   return error
@@ -86,6 +97,17 @@ const resolvedStatus = (invoice) => {
 const existingShareTokens = (invoices) =>
   new Set(invoices.map((invoice) => invoice.shareToken).filter(Boolean))
 
+const uuidPattern =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+
+const normalizedUuid = (id) =>
+  uuidPattern.test(String(id || '')) ? String(id) : null
+
+const normalizedNestedId = (id) => {
+  const value = String(id || '').trim()
+  return value && value.length <= 64 ? value : randomUUID()
+}
+
 export const createUniqueShareToken = (usedTokens = new Set()) => {
   let token = createShareToken()
   while (usedTokens.has(token)) token = createShareToken()
@@ -96,7 +118,7 @@ export const createUniqueShareToken = (usedTokens = new Set()) => {
 const withNestedIds = (records = []) =>
   records.map((record) => ({
     ...record,
-    id: record.id || randomUUID(),
+    id: normalizedNestedId(record.id),
   }))
 
 const normalizeInvoiceCollections = (payload) => ({
@@ -104,6 +126,268 @@ const normalizeInvoiceCollections = (payload) => ({
   items: withNestedIds(payload.items || []),
   payments: withNestedIds(payload.payments || []),
 })
+
+const activeStockStatuses = new Set(['unpaid', 'partially_paid', 'paid'])
+
+const stockAppliesTo = (invoice) =>
+  Boolean(invoice && activeStockStatuses.has(resolvedStatus(invoice)))
+
+const invoiceItemFromRow = (row) => ({
+  id: row.id,
+  productId: row.productId || null,
+  description: row.description,
+  itemCode: row.itemCode || '',
+  colorCode: row.colorCode || '',
+  quantity: Number(row.quantity || 0),
+  unit: row.unit || '',
+  unitPrice: Number(row.unitPrice || 0),
+  discount: Number(row.discount || 0),
+  total: Number(row.total || 0),
+})
+
+const invoicePaymentFromRow = (row) => ({
+  id: row.id,
+  amount: Number(row.amount || 0),
+  paidAt: row.paidAt,
+  receivedBy: row.receivedBy || '',
+  note: row.note || '',
+  recordedBy: row.recordedBy || '',
+  createdAt: row.createdAt,
+  updatedAt: row.updatedAt,
+})
+
+const invoiceItemRows = (invoiceId, items = []) =>
+  items.map((item, index) => ({
+    id: normalizedNestedId(item.id),
+    invoiceId,
+    productId: normalizedUuid(item.productId),
+    description: String(item.description || '').trim(),
+    itemCode: String(item.itemCode || '').trim(),
+    colorCode: String(item.colorCode || '').trim(),
+    quantity: Number(item.quantity || 0),
+    unit: String(item.unit || '').trim(),
+    unitPrice: Number(item.unitPrice || 0),
+    discount: Number(item.discount || 0),
+    total: Number(item.total || 0),
+    sortOrder: index,
+  }))
+
+const invoicePaymentRows = (invoiceId, payments = []) =>
+  payments.map((payment) => ({
+    id: normalizedNestedId(payment.id),
+    invoiceId,
+    amount: Number(payment.amount || 0),
+    paidAt: payment.paidAt || payment.createdAt || new Date(),
+    receivedBy: String(payment.receivedBy || '').trim(),
+    note: String(payment.note || '').trim(),
+    recordedBy: String(payment.recordedBy || '').trim(),
+    createdAt: payment.createdAt,
+    updatedAt: payment.updatedAt,
+  }))
+
+const replaceInvoiceChildren = async (
+  invoiceId,
+  { items = [], payments = [] },
+  transaction,
+) => {
+  await InvoiceItem.destroy({ where: { invoiceId }, transaction })
+  await InvoicePayment.destroy({ where: { invoiceId }, transaction })
+  const itemRows = invoiceItemRows(invoiceId, items)
+  const paymentRows = invoicePaymentRows(invoiceId, payments)
+  if (itemRows.length) {
+    await InvoiceItem.bulkCreate(itemRows, { transaction })
+  }
+  if (paymentRows.length) {
+    await InvoicePayment.bulkCreate(paymentRows, { transaction })
+  }
+}
+
+const hydrateInvoiceCollections = async (invoice, options = {}) => {
+  if (!invoice) return null
+  if (getStorageMode() !== 'mysql') return invoice
+
+  const data = asPlainObject(invoice)
+  const { transaction } = options
+  const [itemRows, paymentRows] = await Promise.all([
+    InvoiceItem.findAll({
+      where: { invoiceId: data.id },
+      order: [['sortOrder', 'ASC']],
+      raw: true,
+      transaction,
+    }),
+    InvoicePayment.findAll({
+      where: { invoiceId: data.id },
+      order: [['paidAt', 'ASC'], ['createdAt', 'ASC']],
+      raw: true,
+      transaction,
+    }),
+  ])
+
+  return {
+    ...data,
+    items: itemRows.length
+      ? itemRows.map(invoiceItemFromRow)
+      : data.items || [],
+    payments: paymentRows.length
+      ? paymentRows.map(invoicePaymentFromRow)
+      : data.payments || [],
+  }
+}
+
+const hydrateInvoiceList = async (invoices, options = {}) =>
+  Promise.all(invoices.map((invoice) => hydrateInvoiceCollections(invoice, options)))
+
+const productQuantityMap = (invoice) => {
+  const map = new Map()
+  for (const item of invoice?.items || []) {
+    const productId = normalizedUuid(item.productId)
+    const quantity = Number(item.quantity || 0)
+    if (!productId || !Number.isFinite(quantity) || quantity <= 0) continue
+    const current = map.get(productId) || 0
+    map.set(productId, current + quantity)
+  }
+  return map
+}
+
+const stockDeltas = (previousInvoice, nextInvoice) => {
+  const previousItems = previousInvoice?.stockApplied
+    ? productQuantityMap(previousInvoice)
+    : new Map()
+  const nextItems = stockAppliesTo(nextInvoice)
+    ? productQuantityMap(nextInvoice)
+    : new Map()
+  const productIds = new Set([...previousItems.keys(), ...nextItems.keys()])
+
+  return Array.from(productIds)
+    .map((productId) => ({
+      productId,
+      delta:
+        Number(previousItems.get(productId) || 0) -
+        Number(nextItems.get(productId) || 0),
+    }))
+    .filter((item) => item.delta !== 0)
+}
+
+const stockMovementForDelta = ({
+  product,
+  delta,
+  invoice,
+  actor,
+  source = 'invoice',
+}) => {
+  const previousStock = Number(product.stockQuantity || 0)
+  const resultingStock = roundMoney(previousStock + delta)
+  if (resultingStock < 0) {
+    throw stockError(
+      `Insufficient stock for ${product.name}. Available ${previousStock}, required ${Math.abs(delta)}`,
+    )
+  }
+
+  const timestamp = new Date().toISOString()
+  return {
+    id: randomUUID(),
+    type: delta > 0 ? 'in' : 'out',
+    quantity: roundMoney(Math.abs(delta)),
+    previousStock,
+    resultingStock,
+    note:
+      delta > 0
+        ? `Invoice ${invoice.invoiceNumber} stock restored`
+        : `Invoice ${invoice.invoiceNumber} stock deducted`,
+    recordedBy: actor || invoice.updatedBy || invoice.createdBy || '',
+    recordedAt: timestamp,
+    source,
+    referenceNumber: invoice.invoiceNumber || '',
+  }
+}
+
+const applyStockDeltasMysql = async (
+  deltas,
+  { invoice, actor, transaction },
+) => {
+  for (const item of deltas) {
+    const product = await Product.findOne({
+      where: { id: item.productId, deletedAt: null },
+      transaction,
+      lock: transaction.LOCK.UPDATE,
+    })
+    if (!product) {
+      throw stockError('Product not found for invoice stock movement')
+    }
+
+    const movement = stockMovementForDelta({
+      product,
+      delta: item.delta,
+      invoice,
+      actor,
+    })
+    await product.update(
+      {
+        stockQuantity: movement.resultingStock,
+        stockMovements: [...(product.stockMovements || []), movement],
+        updatedBy: movement.recordedBy,
+      },
+      { transaction },
+    )
+    await StockMovement.create(
+      {
+        ...movement,
+        productId: item.productId,
+        invoiceId: invoice.id,
+      },
+      { transaction },
+    )
+  }
+}
+
+const applyStockDeltasLocal = async (deltas, { invoice, actor }) => {
+  if (!deltas.length) return
+  await mutateLocalCollection('products', (products) => {
+    for (const item of deltas) {
+      const product = products.find(
+        (record) => String(record.id) === String(item.productId) && !record.deletedAt,
+      )
+      if (!product) {
+        throw stockError('Product not found for invoice stock movement')
+      }
+      const movement = stockMovementForDelta({
+        product,
+        delta: item.delta,
+        invoice,
+        actor,
+      })
+      product.stockQuantity = movement.resultingStock
+      product.stockMovements = [...(product.stockMovements || []), movement]
+      product.updatedBy = movement.recordedBy
+      product.updatedAt = movement.recordedAt
+    }
+    return true
+  })
+}
+
+const reconcileInvoiceStockMysql = async (
+  previousInvoice,
+  nextInvoice,
+  { actor, transaction },
+) => {
+  const deltas = stockDeltas(previousInvoice, nextInvoice)
+  await applyStockDeltasMysql(deltas, {
+    invoice: nextInvoice,
+    actor,
+    transaction,
+  })
+  return stockAppliesTo(nextInvoice)
+}
+
+const reconcileInvoiceStockLocal = async (
+  previousInvoice,
+  nextInvoice,
+  actor,
+) => {
+  const deltas = stockDeltas(previousInvoice, nextInvoice)
+  await applyStockDeltasLocal(deltas, { invoice: nextInvoice, actor })
+  return stockAppliesTo(nextInvoice)
+}
 
 const mysqlSearchConditions = (search) => {
   const pattern = `%${String(search || '').trim().toLowerCase()}%`
@@ -149,7 +433,11 @@ export const listInvoices = async ({
       offset: (pagination.page - 1) * pagination.limit,
       limit: pagination.limit,
     })
-    return { items, total, ...pagination }
+    return {
+      items: await hydrateInvoiceList(items),
+      total,
+      ...pagination,
+    }
   }
 
   const invoices = (await readLocalCollection('invoices'))
@@ -179,12 +467,13 @@ export const listInvoices = async ({
 
 export const findInvoiceById = async (id, { includeDeleted = false } = {}) => {
   if (getStorageMode() === 'mysql') {
-    return Invoice.findOne({
+    const invoice = await Invoice.findOne({
       where: {
         id,
         ...(includeDeleted ? {} : { deletedAt: null }),
       },
     })
+    return hydrateInvoiceCollections(invoice)
   }
   const invoices = await readLocalCollection('invoices')
   return (
@@ -200,7 +489,10 @@ export const findInvoiceByShareToken = async (shareToken) => {
   const token = String(shareToken || '').trim()
   if (!token) return null
   if (getStorageMode() === 'mysql') {
-    return Invoice.findOne({ where: { shareToken: token, deletedAt: null } })
+    const invoice = await Invoice.findOne({
+      where: { shareToken: token, deletedAt: null },
+    })
+    return hydrateInvoiceCollections(invoice)
   }
   const invoices = await readLocalCollection('invoices')
   return (
@@ -251,10 +543,27 @@ export const insertInvoice = async (payload) => {
   const normalized = normalizeInvoiceCollections({
     ...payload,
     shareToken: payload.shareToken || createShareToken(),
+    stockApplied: false,
   })
-  if (getStorageMode() === 'mysql') return Invoice.create(normalized)
+  if (getStorageMode() === 'mysql') {
+    return sequelize.transaction(async (transaction) => {
+      const invoice = await Invoice.create(normalized, { transaction })
+      const nextInvoice = {
+        ...normalized,
+        id: invoice.id,
+        invoiceNumber: invoice.invoiceNumber,
+      }
+      const stockApplied = await reconcileInvoiceStockMysql(null, nextInvoice, {
+        actor: normalized.createdBy || normalized.updatedBy,
+        transaction,
+      })
+      await replaceInvoiceChildren(invoice.id, normalized, transaction)
+      const updated = await invoice.update({ stockApplied }, { transaction })
+      return hydrateInvoiceCollections(updated, { transaction })
+    })
+  }
 
-  return mutateLocalCollection('invoices', (invoices) => {
+  return mutateLocalCollection('invoices', async (invoices) => {
     const duplicate = invoices.some(
       (invoice) =>
         String(invoice.invoiceNumber).toUpperCase() ===
@@ -273,6 +582,11 @@ export const insertInvoice = async (payload) => {
       createdAt: timestamp,
       updatedAt: timestamp,
     }
+    invoice.stockApplied = await reconcileInvoiceStockLocal(
+      null,
+      invoice,
+      invoice.createdBy || invoice.updatedBy,
+    )
     invoices.push(invoice)
     return invoice
   })
@@ -287,17 +601,39 @@ export const replaceInvoice = async (id, payloadOrFactory) => {
         lock: transaction.LOCK.UPDATE,
       })
       if (!invoice) return null
+      const existing = await hydrateInvoiceCollections(invoice, { transaction })
       const payload =
         typeof payloadOrFactory === 'function'
-          ? await payloadOrFactory(invoice)
+          ? await payloadOrFactory(existing)
           : payloadOrFactory
-      return invoice.update(normalizeInvoiceCollections(payload), {
-        transaction,
-      })
+      const normalized = normalizeInvoiceCollections(payload)
+      const nextInvoice = {
+        ...existing,
+        ...normalized,
+        id: invoice.id,
+        invoiceNumber: existing.invoiceNumber,
+      }
+      const stockApplied = await reconcileInvoiceStockMysql(
+        existing,
+        nextInvoice,
+        {
+          actor: normalized.updatedBy || existing.updatedBy,
+          transaction,
+        },
+      )
+      await replaceInvoiceChildren(invoice.id, normalized, transaction)
+      const updated = await invoice.update(
+        {
+          ...normalized,
+          stockApplied,
+        },
+        { transaction },
+      )
+      return hydrateInvoiceCollections(updated, { transaction })
     })
   }
 
-  return mutateLocalCollection('invoices', (invoices) => {
+  return mutateLocalCollection('invoices', async (invoices) => {
     const index = invoices.findIndex(
       (invoice) =>
         String(invoice.id) === String(id) && !invoice.deletedAt,
@@ -305,7 +641,7 @@ export const replaceInvoice = async (id, payloadOrFactory) => {
     if (index === -1) return null
     const payload =
       typeof payloadOrFactory === 'function'
-        ? payloadOrFactory(invoices[index])
+        ? await payloadOrFactory(invoices[index])
         : payloadOrFactory
     const normalized = normalizeInvoiceCollections(payload)
     const duplicate = invoices.some(
@@ -324,6 +660,11 @@ export const replaceInvoice = async (id, payloadOrFactory) => {
       createdAt: invoices[index].createdAt,
       updatedAt: new Date().toISOString(),
     }
+    invoice.stockApplied = await reconcileInvoiceStockLocal(
+      invoices[index],
+      invoice,
+      invoice.updatedBy,
+    )
     invoices[index] = invoice
     return invoice
   })
@@ -373,7 +714,7 @@ export const appendInvoicePayment = async (id, payment) => {
   const timestamp = new Date().toISOString()
   const normalizedPayment = {
     ...payment,
-    id: payment.id || randomUUID(),
+    id: normalizedNestedId(payment.id),
     createdAt: payment.createdAt || timestamp,
     updatedAt: timestamp,
   }
@@ -385,35 +726,70 @@ export const appendInvoicePayment = async (id, payment) => {
         lock: transaction.LOCK.UPDATE,
       })
       if (!invoice) return null
-      const totals = paymentTotals(invoice, Number(normalizedPayment.amount))
-      return invoice.update(
+      const existing = await hydrateInvoiceCollections(invoice, { transaction })
+      const totals = paymentTotals(existing, Number(normalizedPayment.amount))
+      const nextPayments = [...(existing.payments || []), normalizedPayment]
+      const nextInvoice = {
+        ...existing,
+        payments: nextPayments,
+        ...totals,
+        updatedBy: normalizedPayment.recordedBy || existing.updatedBy,
+      }
+      const stockApplied = await reconcileInvoiceStockMysql(
+        existing,
+        nextInvoice,
         {
-          payments: [...(invoice.payments || []), normalizedPayment],
+          actor: normalizedPayment.recordedBy || existing.updatedBy,
+          transaction,
+        },
+      )
+      await replaceInvoiceChildren(
+        invoice.id,
+        {
+          items: existing.items || [],
+          payments: nextPayments,
+        },
+        transaction,
+      )
+      const updated = await invoice.update(
+        {
+          payments: nextPayments,
           ...totals,
-          updatedBy: normalizedPayment.recordedBy || invoice.updatedBy,
+          stockApplied,
+          updatedBy: normalizedPayment.recordedBy || existing.updatedBy,
         },
         { transaction },
       )
+      return hydrateInvoiceCollections(updated, { transaction })
     })
   }
-  return mutateLocalCollection('invoices', (invoices) => {
+  return mutateLocalCollection('invoices', async (invoices) => {
     const invoice = invoices.find(
       (item) => String(item.id) === String(id) && !item.deletedAt,
     )
     if (!invoice) return null
     const totals = paymentTotals(invoice, Number(normalizedPayment.amount))
-    invoice.payments = [...(invoice.payments || []), normalizedPayment]
-    Object.assign(invoice, totals, {
+    const nextInvoice = {
+      ...invoice,
+      payments: [...(invoice.payments || []), normalizedPayment],
+      ...totals,
       updatedBy: normalizedPayment.recordedBy || invoice.updatedBy || '',
       updatedAt: timestamp,
-    })
+    }
+    nextInvoice.stockApplied = await reconcileInvoiceStockLocal(
+      invoice,
+      nextInvoice,
+      nextInvoice.updatedBy,
+    )
+    Object.assign(invoice, nextInvoice)
     return invoice
   })
 }
 
 export const getAllInvoices = async () => {
   if (getStorageMode() === 'mysql') {
-    return Invoice.findAll({ order: [['createdAt', 'DESC']], raw: true })
+    const invoices = await Invoice.findAll({ order: [['createdAt', 'DESC']] })
+    return hydrateInvoiceList(invoices)
   }
   return readLocalCollection('invoices')
 }
