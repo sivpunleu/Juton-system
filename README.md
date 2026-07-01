@@ -129,6 +129,12 @@ TELEGRAM_PUBLIC_URL=https://your-frontend.vercel.app
 AUTO_BACKUP_ENABLED=true
 AUTO_BACKUP_TIME=02:00
 AUTO_BACKUP_RETENTION_DAYS=30
+KHQR_ENABLED=false
+KHQR_BAKONG_ACCOUNT_ID=your-bakong-account-id
+KHQR_MERCHANT_NAME=Marvel Decor
+KHQR_MERCHANT_CITY=PHNOM PENH
+KHQR_MERCHANT_CATEGORY_CODE=5999
+KHQR_CURRENCY=USD
 ```
 
 After deployment, test:
@@ -178,4 +184,22 @@ After configuration:
 - Payment Receipt and payment history can send receipt details.
 - Notification Center can send an overdue and outstanding debt summary.
 - Every send action is recorded in Audit Log.
+
+## Bakong KHQR payments
+
+Dynamic KHQR can be enabled from backend environment variables. When enabled,
+invoice preview pages generate a KHQR code for the current balance due and use
+the invoice number as the payment reference.
+
+```text
+KHQR_ENABLED=true
+KHQR_BAKONG_ACCOUNT_ID=your-bakong-account-id
+KHQR_MERCHANT_NAME=Marvel Decor
+KHQR_MERCHANT_CITY=PHNOM PENH
+KHQR_MERCHANT_CATEGORY_CODE=5999
+KHQR_CURRENCY=USD
+```
+
+This creates the QR for customer payment only. Payment verification is still
+manual unless a bank or payment provider webhook is added later.
 # Juton-system

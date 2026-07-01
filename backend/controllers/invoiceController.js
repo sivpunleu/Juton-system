@@ -12,6 +12,7 @@ import {
   softDeleteInvoice,
 } from '../repositories/invoiceRepository.js'
 import { sendDatabaseError } from '../utils/databaseError.js'
+import { attachKhqrPayment } from '../services/khqrService.js'
 
 const VALID_STATUSES = [
   'draft',
@@ -255,7 +256,7 @@ const toPublicInvoice = (invoice) => {
     __v,
     ...publicInvoice
   } = data
-  return publicInvoice
+  return attachKhqrPayment(publicInvoice)
 }
 
 export const getInvoices = async (req, res) => {
@@ -281,7 +282,7 @@ export const getInvoiceById = async (req, res) => {
     if (!invoice) {
       return res.status(404).json({ message: 'Invoice not found' })
     }
-    res.json(invoice)
+    res.json(attachKhqrPayment(invoice))
   } catch (error) {
     sendError(res, error)
   }
@@ -315,7 +316,7 @@ export const createInvoice = async (req, res) => {
       entityId: invoice.id,
       summary: invoice.invoiceNumber,
     })
-    res.status(201).json(invoice)
+    res.status(201).json(attachKhqrPayment(invoice))
   } catch (error) {
     sendError(res, error)
   }
@@ -342,7 +343,7 @@ export const updateInvoice = async (req, res) => {
       entityId: invoice.id,
       summary: invoice.invoiceNumber,
     })
-    res.json(invoice)
+    res.json(attachKhqrPayment(invoice))
   } catch (error) {
     sendError(res, error)
   }
@@ -364,7 +365,10 @@ export const deleteInvoice = async (req, res) => {
       entityId: invoice.id,
       summary: invoice.invoiceNumber,
     })
-    res.json({ message: 'Invoice moved to trash', invoice })
+    res.json({
+      message: 'Invoice moved to trash',
+      invoice: attachKhqrPayment(invoice),
+    })
   } catch (error) {
     sendError(res, error)
   }
@@ -383,7 +387,7 @@ export const restoreDeletedInvoice = async (req, res) => {
       entityId: invoice.id,
       summary: invoice.invoiceNumber,
     })
-    res.json(invoice)
+    res.json(attachKhqrPayment(invoice))
   } catch (error) {
     sendError(res, error)
   }
@@ -427,7 +431,7 @@ export const addInvoicePayment = async (req, res) => {
       summary: `${updated.invoiceNumber}: $${amount.toFixed(2)}`,
       details: { amount, receivedBy, paidAt: paidAt.toISOString() },
     })
-    res.status(201).json(updated)
+    res.status(201).json(attachKhqrPayment(updated))
   } catch (error) {
     sendError(res, error)
   }

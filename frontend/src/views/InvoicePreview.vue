@@ -1,5 +1,6 @@
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
+import QRCode from 'qrcode'
 import { useRoute, useRouter } from 'vue-router'
 import { insightApi, invoiceApi, settingsApi } from '../api/invoices'
 import {
@@ -23,6 +24,8 @@ const router = useRouter()
 const invoice = ref(null)
 const loading = ref(true)
 const error = ref('')
+const khqrImage = ref('')
+const khqrError = ref('')
 const recordingPayment = ref(false)
 const sendingTelegram = ref('')
 const telegramConfigured = ref(false)
@@ -103,6 +106,33 @@ const showAdminControls = computed(
 )
 const showManageControls = computed(
   () => showAdminControls.value && canManageBilling.value,
+)
+const khqrPayment = computed(() => invoice.value?.khqrPayment)
+const paymentQrImage = computed(
+  () => khqrImage.value || companySettings.paymentQr || qrPlaceholder,
+)
+
+watch(
+  () => invoice.value?.khqrPayment?.payload,
+  async (payload) => {
+    khqrImage.value = ''
+    khqrError.value = ''
+    if (!payload) return
+
+    try {
+      khqrImage.value = await QRCode.toDataURL(payload, {
+        errorCorrectionLevel: 'M',
+        margin: 1,
+        width: 360,
+        color: {
+          dark: '#10233f',
+          light: '#ffffff',
+        },
+      })
+    } catch {
+      khqrError.value = 'Unable to generate KHQR'
+    }
+  },
 )
 
 const loadInvoice = async () => {
@@ -567,9 +597,37 @@ onMounted(() => {
             </template>
           </div>
           <div class="qr-block">
-            <p>ទូទាត់តាមរយៈ៖</p>
-            <strong>{{ companySettings.paymentAccount }}</strong>
-            <img :src="companySettings.paymentQr || qrPlaceholder" alt="ABA payment QR" />
+            <p>
+              {{
+                khqrPayment?.payable
+                  ? 'ទូទាត់តាម Bakong KHQR'
+                  : 'ទូទាត់តាមរយៈ៖'
+              }}
+            </p>
+            <strong>
+              {{
+                khqrPayment?.payable
+                  ? khqrPayment.merchantName
+                  : companySettings.paymentAccount
+              }}
+            </strong>
+            <img
+              :src="paymentQrImage"
+              :alt="khqrPayment?.payable ? 'Bakong KHQR' : 'Payment QR'"
+            />
+            <small v-if="khqrPayment?.payable">
+              Ref: {{ khqrPayment.reference }} ·
+              {{ formatMoney(khqrPayment.amount) }}
+            </small>
+            <small
+              v-else-if="khqrPayment?.enabled && !khqrPayment?.configured"
+              class="text-danger"
+            >
+              KHQR not configured
+            </small>
+            <small v-else-if="khqrError" class="text-danger">
+              {{ khqrError }}
+            </small>
             <!-- <small>REN THEA R. &amp; KHIM C.</small> -->
           </div>
         </div>
