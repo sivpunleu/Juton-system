@@ -1,5 +1,27 @@
 # ER Diagram - Jotun Billing System
 
+## Customer online ordering addendum
+
+The online shop adds three tables without changing the existing admin-account
+model. `customer_accounts` is a separate login realm linked one-to-one with a
+customer. An order contains a snapshot of the customer and selected product
+prices; `order_items` provides normalized order lines.
+
+```mermaid
+erDiagram
+  CUSTOMERS ||--o| CUSTOMER_ACCOUNTS : owns
+  CUSTOMER_ACCOUNTS ||--o{ ORDERS : places
+  CUSTOMERS ||--o{ ORDERS : receives
+  ORDERS ||--|{ ORDER_ITEMS : contains
+  PRODUCTS ||--o{ ORDER_ITEMS : requested_as
+  ORDERS ||--o| INVOICES : converts_to
+```
+
+Orders move from `pending` to `confirmed` or `rejected`. Only a confirmed
+order can become an invoice. This preserves the existing invoice stock logic:
+stock is deducted when the invoice is created, not when a customer submits a
+cart.
+
 ## Normalized Design
 
 ក្នុង project នេះ `invoice_items`, `invoice_payments`, និង `stock_movements`

@@ -197,6 +197,21 @@ export const reportApi = {
   },
 }
 
+export const adminOrderApi = {
+  list(params = {}) {
+    return api.get('/orders', { params })
+  },
+  get(id) {
+    return api.get(`/orders/${id}`)
+  },
+  updateStatus(id, payload) {
+    return api.put(`/orders/${id}/status`, payload)
+  },
+  convert(id) {
+    return api.post(`/orders/${id}/convert`)
+  },
+}
+
 export const insightApi = {
   search(query) {
     return api.get('/insights/search', { params: { q: query } })

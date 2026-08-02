@@ -11,10 +11,12 @@ import authRoutes from './routes/authRoutes.js'
 import customerRoutes from './routes/customerRoutes.js'
 import invoiceRoutes from './routes/invoiceRoutes.js'
 import insightRoutes from './routes/insightRoutes.js'
+import orderRoutes from './routes/orderRoutes.js'
 import productRoutes from './routes/productRoutes.js'
 import reportRoutes from './routes/reportRoutes.js'
 import salespersonRoutes from './routes/salespersonRoutes.js'
 import settingsRoutes from './routes/settingsRoutes.js'
+import shopRoutes from './routes/shopRoutes.js'
 import { startAutomatedBackupScheduler } from './services/backupScheduler.js'
 import { migrateExistingData } from './services/migrationService.js'
 
@@ -60,6 +62,8 @@ app.get('/api/health', (_req, res) => {
 
 app.use('/api/auth', authRoutes)
 app.use('/api/invoices', invoiceRoutes)
+app.use('/api/orders', orderRoutes)
+app.use('/api/shop', shopRoutes)
 app.use('/api/customers', customerRoutes)
 app.use('/api/products', productRoutes)
 app.use('/api/salespeople', salespersonRoutes)

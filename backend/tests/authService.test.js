@@ -3,9 +3,11 @@ import test from 'node:test'
 import bcrypt from 'bcryptjs'
 import {
   createAdminToken,
+  createCustomerToken,
   decodeTokenExpiration,
   verifyAdminCredentials,
   verifyAdminToken,
+  verifyCustomerToken,
 } from '../services/authService.js'
 
 const createConfig = async () => ({
@@ -60,4 +62,21 @@ test('admin JWT preserves database identity and role', async () => {
   assert.equal(payload.adminId, 'admin-id-1')
   assert.equal(payload.username, 'owner')
   assert.equal(payload.role, 'owner')
+})
+
+test('customer JWT is isolated from the admin authentication audience', async () => {
+  const config = await createConfig()
+  const token = createCustomerToken(
+    {
+      id: 'customer-account-1',
+      customerId: 'customer-1',
+      username: 'dara',
+    },
+    config,
+  )
+  const payload = verifyCustomerToken(token, config)
+
+  assert.equal(payload.customerAccountId, 'customer-account-1')
+  assert.equal(payload.customerId, 'customer-1')
+  assert.throws(() => verifyAdminToken(token, config), /audience invalid/)
 })

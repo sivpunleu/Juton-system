@@ -4,9 +4,12 @@ import Admin from '../models/Admin.js'
 import AuditLog from '../models/AuditLog.js'
 import BackupSnapshot from '../models/BackupSnapshot.js'
 import Customer from '../models/Customer.js'
+import CustomerAccount from '../models/CustomerAccount.js'
 import Invoice from '../models/Invoice.js'
 import InvoiceItem from '../models/InvoiceItem.js'
 import InvoicePayment from '../models/InvoicePayment.js'
+import Order from '../models/Order.js'
+import OrderItem from '../models/OrderItem.js'
 import Product from '../models/Product.js'
 import Salesperson from '../models/Salesperson.js'
 import StockMovement from '../models/StockMovement.js'
@@ -17,9 +20,12 @@ const models = [
   AuditLog,
   BackupSnapshot,
   Customer,
+  CustomerAccount,
   Invoice,
   InvoiceItem,
   InvoicePayment,
+  Order,
+  OrderItem,
   Product,
   Salesperson,
   StockMovement,

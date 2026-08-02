@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken'
 
 const TOKEN_ISSUER = 'jotun-billing-api'
 const TOKEN_AUDIENCE = 'jotun-billing-admin'
+const CUSTOMER_TOKEN_AUDIENCE = 'jotun-billing-customer'
 
 export const verifyPasswordHash = (password, passwordHash) =>
   bcrypt.compare(String(password || ''), String(passwordHash || ''))
@@ -56,6 +57,28 @@ export const verifyAdminToken = (token, authConfig) =>
   jwt.verify(token, authConfig.jwtSecret, {
     issuer: TOKEN_ISSUER,
     audience: TOKEN_AUDIENCE,
+  })
+
+export const createCustomerToken = (customer, authConfig) =>
+  jwt.sign(
+    {
+      customerAccountId: String(customer.id || ''),
+      customerId: String(customer.customerId || ''),
+      username: customer.username,
+    },
+    authConfig.jwtSecret,
+    {
+      subject: String(customer.id || customer.username || 'customer'),
+      issuer: TOKEN_ISSUER,
+      audience: CUSTOMER_TOKEN_AUDIENCE,
+      expiresIn: authConfig.customerJwtExpiresIn || authConfig.jwtExpiresIn,
+    },
+  )
+
+export const verifyCustomerToken = (token, authConfig) =>
+  jwt.verify(token, authConfig.jwtSecret, {
+    issuer: TOKEN_ISSUER,
+    audience: CUSTOMER_TOKEN_AUDIENCE,
   })
 
 export const decodeTokenExpiration = (token) => {

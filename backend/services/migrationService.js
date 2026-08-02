@@ -1,9 +1,12 @@
 import { randomUUID } from 'node:crypto'
 import { DataTypes } from 'sequelize'
 import { getStorageMode, sequelize } from '../config/database.js'
+import CustomerAccount from '../models/CustomerAccount.js'
 import Invoice from '../models/Invoice.js'
 import InvoiceItem from '../models/InvoiceItem.js'
 import InvoicePayment from '../models/InvoicePayment.js'
+import OrderItem from '../models/OrderItem.js'
+import Order from '../models/Order.js'
 import Product from '../models/Product.js'
 import StockMovement from '../models/StockMovement.js'
 import { backfillLocalShareTokens } from '../repositories/invoiceRepository.js'
@@ -24,6 +27,9 @@ const ensureNormalizedSchema = async () => {
   const queryInterface = sequelize.getQueryInterface()
   const invoiceTable = Invoice.getTableName()
 
+  await CustomerAccount.sync()
+  await Order.sync()
+  await OrderItem.sync()
   await InvoiceItem.sync()
   await InvoicePayment.sync()
   await StockMovement.sync()

@@ -30,6 +30,7 @@ const sidebarCollapsed = ref(
 const showWorkspace = computed(
   () =>
     isAuthenticated.value &&
+    !route.path.startsWith('/shop') &&
     route.name !== 'login' &&
     route.name !== 'public-invoice-preview',
 )
@@ -37,6 +38,7 @@ const pageMeta = computed(() => {
   const pages = {
     dashboard: ['ផ្ទាំងគ្រប់គ្រង', 'Business overview'],
     'invoice-list': ['វិក្កយបត្រ', 'Invoice management'],
+    'order-list': ['Online Orders', 'Customer order management'],
     'invoice-create': ['បង្កើតវិក្កយបត្រ', 'New invoice'],
     'invoice-edit': ['កែប្រែវិក្កយបត្រ', 'Edit invoice'],
     'invoice-preview': ['មើលវិក្កយបត្រ', 'Invoice preview'],
@@ -193,6 +195,10 @@ const logout = async () => {
             <i class="bi bi-bar-chart-line"></i>
             <span>Reports</span>
           </RouterLink>
+          <RouterLink v-if="canManageBilling" to="/orders" title="Online Orders">
+            <i class="bi bi-bag-check"></i>
+            <span>Online Orders</span>
+          </RouterLink>
 
           <span
             v-if="canManageBilling"
@@ -324,6 +330,7 @@ const logout = async () => {
 
     <header
       v-else-if="
+        !route.path.startsWith('/shop') &&
         route.name !== 'invoice-preview' &&
         route.name !== 'public-invoice-preview' &&
         route.name !== 'login'

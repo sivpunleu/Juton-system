@@ -20,4 +20,13 @@ window.addEventListener('auth:expired', () => {
   }
 })
 
+window.addEventListener('customer:expired', () => {
+  if (router.currentRoute.value.path.startsWith('/shop')) {
+    router.replace({
+      name: 'shop-login',
+      query: { redirect: router.currentRoute.value.fullPath },
+    })
+  }
+})
+
 createApp(App).use(router).use(createBootstrap()).mount('#app')

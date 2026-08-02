@@ -8,6 +8,9 @@ export const getAuthConfig = () => {
   const jwtSecret = String(process.env.JWT_SECRET || '').trim()
   const jwtExpiresIn =
     String(process.env.JWT_EXPIRES_IN || '').trim() || DEFAULT_TOKEN_LIFETIME
+  const customerJwtExpiresIn =
+    String(process.env.CUSTOMER_JWT_EXPIRES_IN || '').trim() ||
+    DEFAULT_TOKEN_LIFETIME
   const hasValidPasswordHash = BCRYPT_HASH_PATTERN.test(passwordHash)
   const hasStrongJwtSecret = jwtSecret.length >= MINIMUM_JWT_SECRET_LENGTH
 
@@ -16,6 +19,7 @@ export const getAuthConfig = () => {
     passwordHash,
     jwtSecret,
     jwtExpiresIn,
+    customerJwtExpiresIn,
     hasJwtSecret: hasStrongJwtSecret,
     hasBootstrapAdmin: Boolean(username && hasValidPasswordHash),
     isConfigured: Boolean(

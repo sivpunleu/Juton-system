@@ -3,9 +3,12 @@ import { getStorageMode, sequelize } from '../config/database.js'
 import AuditLog from '../models/AuditLog.js'
 import Counter from '../models/Counter.js'
 import Customer from '../models/Customer.js'
+import CustomerAccount from '../models/CustomerAccount.js'
 import Invoice from '../models/Invoice.js'
 import InvoiceItem from '../models/InvoiceItem.js'
 import InvoicePayment from '../models/InvoicePayment.js'
+import Order from '../models/Order.js'
+import OrderItem from '../models/OrderItem.js'
 import Product from '../models/Product.js'
 import Salesperson from '../models/Salesperson.js'
 import StockMovement from '../models/StockMovement.js'
@@ -24,6 +27,8 @@ import {
 } from '../repositories/auditRepository.js'
 import { getAllCatalogRecords } from '../repositories/catalogRepository.js'
 import { getAllInvoices } from '../repositories/invoiceRepository.js'
+import { getAllCustomerAccountsForBackup } from '../repositories/customerAccountRepository.js'
+import { getAllOrdersForBackup } from '../repositories/orderRepository.js'
 import {
   defaultSystemSettings,
   getSystemSettings,
@@ -33,13 +38,15 @@ import {
   readLocalCollection,
 } from '../repositories/localStore.js'
 
-export const BACKUP_FORMAT_VERSION = 3
+export const BACKUP_FORMAT_VERSION = 4
 
 const backupCollectionNames = [
   'invoices',
   'customers',
+  'customer-accounts',
   'products',
   'salespeople',
+  'orders',
   'auditLogs',
   'counters',
 ]
@@ -69,8 +76,10 @@ const cleanPlainRecord = (record) => normalizeLegacyIds(clone(record) || {})
 const countsForPayload = (payload) => ({
   invoices: payload.invoices.length,
   customers: payload.customers.length,
+  customerAccounts: payload.customerAccounts.length,
   products: payload.products.length,
   salespeople: payload.salespeople.length,
+  orders: payload.orders.length,
   auditLogs: payload.auditLogs.length,
   counters: payload.counters.length,
   admins: payload.admins.length,
@@ -127,14 +136,20 @@ const mapRecordIds = (records) => {
 
 const prepareRelationalBackup = (backup) => {
   const customers = mapRecordIds(backup.customers)
+  const customerAccounts = mapRecordIds(backup.customerAccounts)
   const products = mapRecordIds(backup.products)
   const salespeople = mapRecordIds(backup.salespeople)
   const invoices = mapRecordIds(backup.invoices)
+  const orders = mapRecordIds(backup.orders)
   const auditLogs = mapRecordIds(backup.auditLogs)
 
   return {
     ...backup,
     customers: customers.values,
+    customerAccounts: customerAccounts.values.map((account) => ({
+      ...account,
+      customerId: mappedId(account.customerId, customers.map),
+    })),
     salespeople: salespeople.values,
     products: products.values.map((product) => ({
       ...product,
@@ -170,6 +185,19 @@ const prepareRelationalBackup = (backup) => {
           : randomUUID(),
       })),
     })),
+    orders: orders.values.map((order) => ({
+      ...order,
+      customerAccountId: mappedId(order.customerAccountId, customerAccounts.map),
+      customerId: mappedId(order.customerId, customers.map),
+      invoiceId: order.invoiceId
+        ? mappedId(order.invoiceId, invoices.map)
+        : null,
+      items: (order.items || []).map((item) => ({
+        ...item,
+        id: uuidPattern.test(String(item.id || '')) ? item.id : randomUUID(),
+        productId: item.productId ? mappedId(item.productId, products.map) : null,
+      })),
+    })),
     auditLogs: auditLogs.values,
     counters: backup.counters.map((counter) => ({
       id: String(counter.id || ''),
@@ -192,8 +220,10 @@ export const buildDatabaseBackup = async ({
   const [
     invoices,
     customers,
+    customerAccounts,
     products,
     salespeople,
+    orders,
     admins,
     auditLogs,
     settings,
@@ -201,8 +231,10 @@ export const buildDatabaseBackup = async ({
   ] = await Promise.all([
     getAllInvoices(),
     getAllCatalogRecords('customers'),
+    getAllCustomerAccountsForBackup(),
     getAllCatalogRecords('products'),
     getAllCatalogRecords('salespeople'),
+    getAllOrdersForBackup(),
     getAllAdminsForBackup(),
     getAllAuditLogs(),
     getSystemSettings(),
@@ -218,8 +250,10 @@ export const buildDatabaseBackup = async ({
     },
     invoices: clone(invoices) || [],
     customers: clone(customers) || [],
+    customerAccounts: clone(customerAccounts) || [],
     products: clone(products) || [],
     salespeople: clone(salespeople) || [],
+    orders: clone(orders) || [],
     admins: clone(admins) || [],
     auditLogs: clone(auditLogs) || [],
     counters: clone(counters) || [],
@@ -244,8 +278,11 @@ export const normalizeBackupPayload = (payload) => {
     metadata: { ...backup.metadata, formatVersion: version },
     invoices: normalizeArray(backup, 'invoices'),
     customers: normalizeArray(backup, 'customers'),
+    customerAccounts:
+      version >= 4 ? normalizeArray(backup, 'customerAccounts') : [],
     products: normalizeArray(backup, 'products'),
     salespeople: normalizeArray(backup, 'salespeople'),
+    orders: version >= 4 ? normalizeArray(backup, 'orders') : [],
     auditLogs: Array.isArray(backup.auditLogs)
       ? backup.auditLogs.map(cleanPlainRecord)
       : [],
@@ -275,9 +312,12 @@ const restoreMysql = async (backup) =>
   sequelize.transaction(async (transaction) => {
     const options = { transaction }
     await StockMovement.destroy({ where: {}, ...options })
+    await OrderItem.destroy({ where: {}, ...options })
+    await Order.destroy({ where: {}, ...options })
     await InvoicePayment.destroy({ where: {}, ...options })
     await InvoiceItem.destroy({ where: {}, ...options })
     await Invoice.destroy({ where: {}, ...options })
+    await CustomerAccount.destroy({ where: {}, ...options })
     await Customer.destroy({ where: {}, ...options })
     await Product.destroy({ where: {}, ...options })
     await Salesperson.destroy({ where: {}, ...options })
@@ -288,6 +328,9 @@ const restoreMysql = async (backup) =>
     if (backup.customers.length) {
       await Customer.bulkCreate(backup.customers, options)
     }
+    if (backup.customerAccounts.length) {
+      await CustomerAccount.bulkCreate(backup.customerAccounts, options)
+    }
     if (backup.products.length) {
       await Product.bulkCreate(backup.products, options)
     }
@@ -296,6 +339,9 @@ const restoreMysql = async (backup) =>
     }
     if (backup.invoices.length) {
       await Invoice.bulkCreate(backup.invoices, options)
+    }
+    if (backup.orders.length) {
+      await Order.bulkCreate(backup.orders, options)
     }
     const invoiceItems = backup.invoices.flatMap((invoice) =>
       (invoice.items || []).map((item, index) => ({
@@ -309,6 +355,13 @@ const restoreMysql = async (backup) =>
         ...payment,
         invoiceId: invoice.id,
         paidAt: payment.paidAt || payment.createdAt || invoice.invoiceDate,
+      })),
+    )
+    const orderItems = backup.orders.flatMap((order) =>
+      (order.items || []).map((item, index) => ({
+        ...item,
+        orderId: order.id,
+        sortOrder: index,
       })),
     )
     const stockMovements = backup.products.flatMap((product) =>
@@ -326,6 +379,9 @@ const restoreMysql = async (backup) =>
     if (invoicePayments.length) {
       await InvoicePayment.bulkCreate(invoicePayments, options)
     }
+    if (orderItems.length) {
+      await OrderItem.bulkCreate(orderItems, options)
+    }
     if (stockMovements.length) {
       await StockMovement.bulkCreate(stockMovements, options)
     }
@@ -341,8 +397,10 @@ const restoreMysql = async (backup) =>
 const restoreLocal = async (backup) => {
   await replaceLocalCollection('invoices', backup.invoices)
   await replaceLocalCollection('customers', backup.customers)
+  await replaceLocalCollection('customer-accounts', backup.customerAccounts)
   await replaceLocalCollection('products', backup.products)
   await replaceLocalCollection('salespeople', backup.salespeople)
+  await replaceLocalCollection('orders', backup.orders)
   await replaceLocalCollection('audit-logs', backup.auditLogs)
   await replaceLocalCollection('counters', backup.counters)
   await replaceLocalCollection('system-settings', [backup.settings])

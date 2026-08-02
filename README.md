@@ -84,6 +84,18 @@ the application database. The owner can then create more accounts:
 - Telegram delivery for invoices, payment receipts, and debt alerts
 - A shared A4 layout for browser preview and Print / Save PDF
 
+## Customer online ordering
+
+Customers can browse the public catalogue at `/shop`, create a separate
+customer account, add products to a cart, and submit an order. Customer
+accounts are separate from administrator accounts and use a distinct JWT
+audience.
+
+Orders start as `pending`. An owner or admin reviews them in **Online Orders**,
+confirms stock, and creates an invoice. Stock is only deducted when that invoice
+is created, never when a customer submits a cart. Customer order and account
+data are included in new database backups.
+
 Downloaded backups contain private customer and business data. Store them in a
 secure location.
 

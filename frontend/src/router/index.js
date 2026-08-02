@@ -14,10 +14,18 @@ import SalespersonList from '../views/SalespersonList.vue'
 import SettingsView from '../views/SettingsView.vue'
 import CustomerStatementView from '../views/CustomerStatementView.vue'
 import SystemSettingsView from '../views/SystemSettingsView.vue'
+import OrderListView from '../views/OrderListView.vue'
+import ShopAuthView from '../views/ShopAuthView.vue'
+import ShopCartView from '../views/ShopCartView.vue'
+import ShopCatalogView from '../views/ShopCatalogView.vue'
+import ShopCheckoutView from '../views/ShopCheckoutView.vue'
+import ShopOrdersView from '../views/ShopOrdersView.vue'
+import ShopLayout from '../components/ShopLayout.vue'
 import {
   currentAdmin,
   hasValidSession,
 } from '../auth/session'
+import { hasValidCustomerSession } from '../auth/customerSession.js'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -61,6 +69,12 @@ const router = createRouter({
       name: 'invoice-preview',
       component: InvoicePreview,
       meta: { requiresAuth: true },
+    },
+    {
+      path: '/orders',
+      name: 'order-list',
+      component: OrderListView,
+      meta: { requiresAuth: true, roles: ['owner', 'admin'] },
     },
     {
       path: '/public/invoices/:token',
@@ -127,12 +141,53 @@ const router = createRouter({
       component: SystemSettingsView,
       meta: { requiresAuth: true, roles: ['owner'] },
     },
+    {
+      path: '/shop',
+      component: ShopLayout,
+      children: [
+        { path: '', name: 'shop-catalog', component: ShopCatalogView },
+        { path: 'cart', name: 'shop-cart', component: ShopCartView },
+        {
+          path: 'login',
+          name: 'shop-login',
+          component: ShopAuthView,
+          meta: { customerGuestOnly: true },
+        },
+        {
+          path: 'register',
+          name: 'shop-register',
+          component: ShopAuthView,
+          meta: { customerGuestOnly: true },
+        },
+        {
+          path: 'checkout',
+          name: 'shop-checkout',
+          component: ShopCheckoutView,
+          meta: { requiresCustomer: true },
+        },
+        {
+          path: 'orders',
+          name: 'shop-orders',
+          component: ShopOrdersView,
+          meta: { requiresCustomer: true },
+        },
+      ],
+    },
   ],
   scrollBehavior: () => ({ top: 0 }),
 })
 
 router.beforeEach((to) => {
   const authenticated = hasValidSession()
+  const customerAuthenticated = hasValidCustomerSession()
+
+  if (to.meta.requiresCustomer && !customerAuthenticated) {
+    return { name: 'shop-login', query: { redirect: to.fullPath } }
+  }
+
+  if (to.meta.customerGuestOnly && customerAuthenticated) {
+    return { name: 'shop-catalog' }
+  }
 
   if (to.meta.requiresAuth && !authenticated) {
     return {
