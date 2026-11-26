@@ -1,16 +1,70 @@
-# Jotun Billing System
+# Jotun Billing & Online Ordering System
 
-A small invoice management application built with:
+![Jotun Billing System Preview](./docs/preview.jpg)
 
-- Node.js, Express, MySQL, and Sequelize
-- Vue 3, Vite, Bootstrap 5, and BootstrapVueNext
+A full-stack **Invoice, Inventory, Payment, and Customer Online Ordering** platform built for paint retail operations (**Marvel Decor / Jotun**), using **Node.js**, **Express**, **MySQL**, **Sequelize**, **Vue 3**, **Vite**, and **Bootstrap 5**.
 
-## Run locally
+- **Live Web App:** https://jotun-mysql-web.onrender.com *(Free-tier hosting; first API request may take ~30–60s on cold start)*
+- **Customer Storefront:** https://jotun-mysql-web.onrender.com/shop
+- **Technical Documentation:** [ER Diagram](./docs/ER_DIAGRAM.md) · [Security Controls](./docs/SECURITY.md) · [Testing Evidence](./docs/TESTING_EVIDENCE.md) · [User Manual](./docs/USER_MANUAL.md)
 
-1. Create a MySQL database, copy `backend/.env.example` to `backend/.env`,
-   and update the `DB_*` values. If MySQL is unavailable, development and
-   tests can use local JSON storage; production always requires MySQL.
-2. Install and start the backend:
+---
+
+## Tech Stack
+
+| Layer | Technologies |
+| --- | --- |
+| **Frontend** | Vue 3 (Composition API), Vite 6, Vue Router, Bootstrap 5, BootstrapVueNext, Axios, QRCode, SweetAlert2 |
+| **Backend** | Node.js (ESM), Express 4, Sequelize ORM, MySQL2, JWT (`jsonwebtoken`), Bcrypt (`bcryptjs`), Helmet, Rate Limit |
+| **Integrations** | Bakong KHQR (EMVCo CRC16-CCITT dynamic QR generation), Telegram Bot API |
+| **Testing & Deploy** | Node.js Test Runner (`node --test` — 30 unit/integration tests), Render Blueprint (`render.yaml`), Vercel SPA config |
+
+---
+
+## Key Features
+
+### Billing, Inventory & Payments
+- **Atomic Invoice Numbering:** Sequential `INV-YYYY-00001` generation across Draft, Unpaid, Partially Paid, Paid, and Cancelled lifecycles.
+- **Automated Stock Ledger:** Automatic inventory deduction when an invoice is confirmed and stock restoration upon cancellation, backed by `stock_movements` audit records.
+- **Payment Tracking & Receipts:** Partial payment recording with receiver, timestamp, balance-due guardrails, printable receipts, and A4 Print / Save PDF invoice layouts.
+- **Shareable Customer Invoices:** Tokenized public invoice links at `/public/invoices/:token`.
+- **Bakong KHQR Dynamic QR:** Generates invoice-specific KHQR payment codes on active unpaid balances when enabled.
+
+### Customer Online Ordering (`/shop`)
+- **Public Product Catalogue:** Searchable paint catalogue with item codes, colour codes, shopping cart, and checkout workflow.
+- **Audience-Isolated Auth:** Separate `customer_accounts` table and dedicated customer JWT audience isolated from admin authentication.
+- **Controlled Stock Fulfillment:** Customer orders start as `pending`; staff verify stock in **Online Orders** and convert confirmed orders into invoices without premature stock deduction.
+
+### Governance, Analytics & Backup
+- **Role-Based Access Control (RBAC):** `owner`, `admin`, and `viewer` roles with enforced API and route guards.
+- **Analytics & Exports:** Revenue trends, sales attribution, customer statements, debt aging, low-stock watchlists, and CSV exports.
+- **Audit Logging & Soft Trash:** Recoverable soft-delete trash/restore for invoices, customers, and products, plus action audit trails.
+- **Telegram Alerts & Automated Backups:** Telegram notifications for invoices, payment receipts, and overdue debt summaries, plus automated daily JSON snapshots with owner-only download and safe restore.
+
+---
+
+## Project Structure
+
+```text
+jotun-system/
+├── backend/                # Express API, Sequelize models, services, repositories, and tests
+│   ├── config/             # Auth, MySQL/Sequelize SSL, and Telegram config
+│   ├── controllers/        # HTTP handlers for invoices, shop, orders, reports, auth
+│   ├── middleware/         # Dual JWT auth, role checks, Helmet, login & API rate limits
+│   ├── models/             # Normalized MySQL schema + local JSON dev/test fallback
+│   ├── services/           # KHQR generator, Telegram sender, backup scheduler, migrations
+│   └── tests/              # 30 automated tests (node --test)
+├── frontend/               # Vue 3 + Vite SPA (Admin Portal & Public /shop Storefront)
+├── docs/                   # ER Diagram, Security Controls, Testing Evidence, User Manual
+└── render.yaml             # Render Blueprint (API + Static Web)
+```
+
+---
+
+## Run Locally
+
+1. **Database & Environment:** Create a MySQL database, copy `backend/.env.example` to `backend/.env`, and configure `DB_*` values. *(In development/test mode without MySQL configured, the backend falls back to local JSON storage; production always requires MySQL.)*
+2. **Install and start the backend (`http://localhost:5000`):**
 
 ```bash
 cd backend
@@ -18,7 +72,7 @@ npm install
 npm run dev
 ```
 
-3. In another terminal, install and start the frontend:
+3. **In another terminal, install and start the frontend (`http://localhost:5173`):**
 
 ```bash
 cd frontend
@@ -26,25 +80,11 @@ npm install
 npm run dev
 ```
 
-The frontend runs at `http://localhost:5173` and the API runs at
-`http://localhost:5000`.
-
-## Admin authentication
-
-Admin invoice pages, the invoice list, and create/edit/delete actions require
-an admin login. Customer-facing invoice links use random share tokens at
-`/public/invoices/:token`.
-
-Generate a bcrypt password hash:
+### Generate Admin & JWT Secrets
 
 ```bash
 cd backend
 npm run hash-password
-```
-
-Generate a JWT signing secret:
-
-```bash
 npm run generate-jwt-secret
 ```
 
@@ -57,164 +97,40 @@ JWT_SECRET=long-random-secret
 JWT_EXPIRES_IN=8h
 ```
 
-Passwords and JWT secrets must only be stored in environment variables. Never
-add them to frontend code or commit them to Git.
+The first successful environment-admin login provisions the initial `owner` account in the database, which can then manage `admin` and `viewer` accounts.
 
-The first successful environment-admin login creates an `owner` account in
-the application database. The owner can then create more accounts:
+---
 
-- `owner`: full access, admin management, and JSON backup
-- `admin`: manage invoices, payments, customers, products, and audit logs
-- `viewer`: read-only access
+## Automated Tests
 
-## Billing features
+```bash
+cd backend
+npm test
+```
 
-- Atomic sequential invoice numbers in `INV-YYYY-00001` format
-- Draft, unpaid, partially paid, paid, and cancelled statuses
-- Payment history with amount, date, receiver, note, and recording admin
-- Dashboard revenue, outstanding balance, paid invoice, and status metrics
-- Customer and product catalogues that populate the invoice form
-- Audit logging for management and security actions
-- Recoverable trash and restore for invoices, customers, and products
-- Server-side pagination and filters
-- Personal profiles with a compressed avatar, display name, password controls,
-  last login details, and personal activity history
-- Invoice CSV export and owner-only JSON database backup
-- Automated daily backup snapshots with owner-only download and restore workflow
-- Telegram delivery for invoices, payment receipts, and debt alerts
-- A shared A4 layout for browser preview and Print / Save PDF
+Runs 30 automated unit and integration tests covering authentication, JWT audience isolation, invoice totals, stock movements, KHQR CRC16/EMVCo payloads, MySQL schema rules, backup/restore safety, and Telegram alert formatting.
 
-## Customer online ordering
+---
 
-Customers can browse the public catalogue at `/shop`, create a separate
-customer account, add products to a cart, and submit an order. Customer
-accounts are separate from administrator accounts and use a distinct JWT
-audience.
-
-Orders start as `pending`. An owner or admin reviews them in **Online Orders**,
-confirms stock, and creates an invoice. Stock is only deducted when that invoice
-is created, never when a customer submits a cart. Customer order and account
-data are included in new database backups.
-
-Downloaded backups contain private customer and business data. Store them in a
-secure location.
-
-Backup restore replaces business data such as invoices, customers, products,
-salespeople, settings, audit logs, and invoice counters. Admin accounts are not
-restored from uploaded backup files.
-
-## Deploy
+## Deployment
 
 ### 1. Cloud MySQL
+Provision a MySQL instance (e.g., Aiven or Railway), enable SSL (`DB_SSL=true`), and run schema sync once on a fresh database:
 
-Create a MySQL service on Aiven, Railway, or another provider. Copy its host,
-port, database, username, and password. Enable SSL for production and upload
-the provider CA certificate to Render as a secret file when required.
+```bash
+cd backend
+npm run db:sync
+```
 
-Production requires MySQL. The local JSON fallback is development-only.
+Keep `DB_SYNC=false` in normal production startup.
 
 ### 2. Backend on Render
+1. Import the repository as a Render Blueprint (`render.yaml`) or Web Service with Root Directory `backend`.
+2. Configure production environment variables (`NODE_ENV=production`, `DB_*`, `CLIENT_URL`, `ADMIN_USERNAME`, `ADMIN_PASSWORD_HASH`, `JWT_SECRET`, and optional `TELEGRAM_*` / `KHQR_*`).
+3. Verify `GET /api/health`.
 
-1. Push this repository to GitHub.
-2. In Render, create a Blueprint from the repository. Render reads
-   `render.yaml`.
-3. Set these environment variables:
-
-```text
-DB_HOST=your-cloud-mysql-host
-DB_PORT=your-cloud-mysql-port
-DB_NAME=defaultdb
-DB_USER=your-database-user
-DB_PASSWORD=your-database-password
-DB_SSL=true
-DB_SSL_CA_PATH=/etc/secrets/mysql-ca.pem
-DB_SYNC=false
-DB_LOGGING=false
-JSON_BODY_LIMIT=10mb
-RATE_LIMIT_WINDOW_MS=900000
-RATE_LIMIT_MAX=600
-CLIENT_URL=https://your-frontend.vercel.app
-ADMIN_USERNAME=admin
-ADMIN_PASSWORD_HASH=$2b$12$...
-JWT_SECRET=long-random-secret
-JWT_EXPIRES_IN=8h
-TELEGRAM_BOT_TOKEN=123456789:replace-with-bot-token
-TELEGRAM_CHAT_ID=-1001234567890
-TELEGRAM_PUBLIC_URL=https://your-frontend.vercel.app
-AUTO_BACKUP_ENABLED=true
-AUTO_BACKUP_TIME=02:00
-AUTO_BACKUP_RETENTION_DAYS=30
-KHQR_ENABLED=false
-KHQR_BAKONG_ACCOUNT_ID=your-bakong-account-id
-KHQR_MERCHANT_NAME=Marvel Decor
-KHQR_MERCHANT_CITY=PHNOM PENH
-KHQR_MERCHANT_CATEGORY_CODE=5999
-KHQR_CURRENCY=USD
-```
-
-After deployment, test:
-
-```text
-https://your-backend.onrender.com/api/health
-```
-
-Run `npm run db:sync` once with the production database environment variables
-when creating an empty database. Keep `DB_SYNC=false` during normal production
-startup.
-
-Database snapshots stored by the application live in the same MySQL service.
-Download important snapshots regularly and keep an encrypted copy outside the
-database provider.
-
-### 3. Frontend on Vercel
-
-1. Import the same GitHub repository.
-2. Set the Root Directory to `frontend`.
-3. Add this environment variable:
-
-```text
-VITE_API_URL=https://your-backend.onrender.com/api
-```
-
-4. Deploy, then copy the Vercel URL into Render's `CLIENT_URL` and redeploy
-   the backend.
-
-## Telegram alerts
-
-1. Create a bot with `@BotFather` and copy its token.
-2. Open the bot and send `/start`. For a group or channel, add the bot and
-   allow it to post messages.
-3. Read the target chat ID from the Bot API `getUpdates` response.
-4. Add `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` to Render Environment.
-   `TELEGRAM_PUBLIC_URL` is optional; when omitted, the first `CLIENT_URL`
-   value is used for invoice links.
-5. Redeploy the backend.
-
-Bot tokens must stay in backend environment variables. Never put a Telegram
-token in Vue code, Vercel variables exposed with `VITE_`, screenshots, or Git.
-
-After configuration:
-
-- Invoice Preview can send the invoice summary and public invoice link.
-- Payment Receipt and payment history can send receipt details.
-- Notification Center can send an overdue and outstanding debt summary.
-- Every send action is recorded in Audit Log.
-
-## Bakong KHQR payments
-
-Dynamic KHQR can be enabled from backend environment variables. When enabled,
-invoice preview pages generate a KHQR code for the current balance due and use
-the invoice number as the payment reference.
-
-```text
-KHQR_ENABLED=true
-KHQR_BAKONG_ACCOUNT_ID=your-bakong-account-id
-KHQR_MERCHANT_NAME=Marvel Decor
-KHQR_MERCHANT_CITY=PHNOM PENH
-KHQR_MERCHANT_CATEGORY_CODE=5999
-KHQR_CURRENCY=USD
-```
-
-This creates the QR for customer payment only. Payment verification is still
-manual unless a bank or payment provider webhook is added later.
-# Juton-system
+### 3. Frontend (Render Static / Vercel)
+- Root Directory: `frontend`
+- Build Command: `npm ci && npm run build`
+- Output Directory: `dist`
+- Environment Variable: `VITE_API_URL=https://your-backend-url/api`

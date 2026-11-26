@@ -4,7 +4,7 @@
 
 | Area | Command | Result |
 | --- | --- | --- |
-| Backend unit/integration tests | `cd backend && npm test` | PASS - 28 tests, 0 failed |
+| Backend unit/integration tests | `cd backend && npm test` | PASS - 30 tests, 0 failed |
 | Frontend production build | `cd frontend && npm run build` | PASS - build completed |
 
 Note: Vite reports a chunk-size warning after build. It is not a failing error, but code-splitting can be improved later.
